@@ -1,0 +1,1927 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU-Bound Rubik's Cube Visualizer & True Formula Solver (2x2 - 400x400)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        html, body {
+            font-family: 'Inter', sans-serif;
+            background-color: #07090e;
+            color: #f1f5f9;
+            width: 100%;
+            height: 100%;
+            height: 100dvh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            overscroll-behavior: none;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+            touch-action: pan-x;
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+            background: #1e293b;
+            height: 6px;
+            border-radius: 999px;
+            border: 1px solid #334155;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            margin-top: -6px;
+            background-color: #38bdf8;
+            height: 18px;
+            width: 18px;
+            border-radius: 999px;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+            transition: transform 0.15s ease, background-color 0.15s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            background-color: #7dd3fc;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.82);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+        }
+        .custom-scroll {
+            touch-action: pan-y;
+            -webkit-overflow-scrolling: touch;
+        }
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 999px;
+        }
+        .btn-emerald-glow:hover:not(:disabled) { box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); }
+        .btn-amber-glow:hover:not(:disabled) { box-shadow: 0 0 20px rgba(245, 158, 11, 0.4); }
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(16, 185, 129, 0.4); }
+            50% { border-color: rgba(16, 185, 129, 0.95); }
+        }
+        .solved-pulse { animation: pulse-border 2s infinite; }
+    </style>
+</head>
+<body class="w-full h-full relative overflow-hidden">
+
+    <div id="canvas-container" class="w-full h-full absolute inset-0 z-0 cursor-grab active:cursor-grabbing"></div>
+
+    <!-- Header & GPU Telemetry HUD -->
+    <header class="fixed top-2 sm:top-3 left-2 sm:left-3 right-2 sm:right-3 z-20 flex flex-col lg:flex-row items-stretch lg:items-start justify-between gap-1.5 sm:gap-2.5 pointer-events-none">
+        <div class="flex items-center justify-between gap-2">
+            <div class="glass-panel rounded-xl sm:rounded-2xl px-2.5 py-2 sm:px-4 sm:py-3 pointer-events-auto flex items-center gap-2.5 sm:gap-3.5 flex-1 lg:flex-initial min-w-0">
+                <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-sky-500 via-indigo-500 to-emerald-500 p-0.5 shadow-lg shadow-sky-500/20 flex-shrink-0">
+                    <div class="w-full h-full bg-slate-950 rounded-[7px] sm:rounded-[10px] grid grid-cols-2 gap-0.5 p-1 sm:p-1.5">
+                        <div class="bg-rose-500 rounded-xs"></div>
+                        <div class="bg-sky-400 rounded-xs"></div>
+                        <div class="bg-amber-400 rounded-xs"></div>
+                        <div class="bg-emerald-400 rounded-xs"></div>
+                    </div>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5 sm:gap-2">
+                        <h1 class="font-extrabold text-xs sm:text-base tracking-tight text-white truncate">HYPERCUBE <span class="text-sky-400">TRUE SOLVER</span></h1>
+                        <span class="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 mono flex-shrink-0">Zero-History</span>
+                    </div>
+                    <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 truncate">Solver Murni Baca Piksel GPU (2×2 – 400×400)</p>
+                </div>
+                <button id="btn-fit-cam" title="Reset Sudut Kamera" class="p-1.5 sm:p-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition flex-shrink-0">
+                    <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                    </svg>
+                </button>
+            </div>
+
+            <button id="btn-mobile-drawer" class="lg:hidden glass-panel rounded-xl px-3 py-2 pointer-events-auto flex items-center gap-1.5 text-xs font-bold text-sky-300 border border-sky-500/40 active:scale-95 transition flex-shrink-0">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+                </svg>
+                <span id="mobile-drawer-label">Panel</span>
+            </button>
+        </div>
+
+        <div class="glass-panel rounded-xl sm:rounded-2xl px-2.5 py-1.5 sm:px-4 sm:py-2.5 pointer-events-auto flex lg:grid lg:grid-cols-5 items-center justify-between gap-2 sm:gap-5 text-xs overflow-x-auto">
+            <div class="flex items-center lg:block gap-1.5 flex-shrink-0">
+                <div class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-medium">GPU</div>
+                <div class="mono font-bold text-xs sm:text-sm text-emerald-400 flex items-baseline gap-1">
+                    <span id="hud-fps">60</span><span class="text-[9px] sm:text-[10px] text-slate-400 font-normal">FPS</span>
+                    <span id="hud-ms" class="hidden sm:inline text-[11px] text-slate-400 font-normal">(1.2 ms)</span>
+                </div>
+            </div>
+            <div class="flex items-center lg:block gap-1.5 flex-shrink-0">
+                <div class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-medium">Stiker</div>
+                <div id="hud-stickers" class="mono font-bold text-xs sm:text-sm text-sky-300">54</div>
+            </div>
+            <div class="hidden sm:block flex-shrink-0">
+                <div class="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Metode Rumus</div>
+                <div id="hud-method" class="mono font-bold text-xs text-indigo-300 mt-0.5 truncate max-w-[140px]">Kociemba 2-Fase</div>
+            </div>
+            <div class="hidden md:block flex-shrink-0">
+                <div class="text-[10px] uppercase tracking-wider text-slate-400 font-medium">VRAM FBO</div>
+                <div id="hud-vram" class="mono font-bold text-sm text-amber-300 mt-0.5">0.01 MB</div>
+            </div>
+            <div class="border-l border-slate-700/60 pl-2 sm:pl-4 flex items-center lg:flex-col lg:justify-center gap-1.5 flex-shrink-0">
+                <div class="hidden lg:block text-[10px] uppercase tracking-wider text-slate-400 font-medium">Status Rubik</div>
+                <div id="hud-status" class="mono font-bold text-[10px] sm:text-xs text-emerald-400 flex items-center gap-1.5">
+                    <span id="status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
+                    <span id="status-text" class="truncate max-w-[130px] sm:max-w-none">TERSELESAIKAN</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Progress Modal for Large N×N Formula Calculation -->
+    <div id="solver-compute-modal" class="fixed inset-0 z-40 pointer-events-none flex items-center justify-center opacity-0 transition-opacity duration-300 bg-slate-950/60 backdrop-blur-sm">
+        <div class="glass-panel rounded-2xl p-5 sm:p-6 border border-sky-500/40 max-w-md w-full mx-4 shadow-2xl pointer-events-auto">
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-300 font-bold animate-spin">⚙</div>
+                    <div>
+                        <div id="compute-title" class="text-sm font-bold text-white">Memindai Piksel GPU & Menyusun Rumus...</div>
+                        <div id="compute-subtitle" class="text-xs text-sky-300 mono">Menganalisis Orbit Sudut, Wing-Edge & Pusat</div>
+                    </div>
+                </div>
+                <button id="btn-cancel-compute" class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition">Batal</button>
+            </div>
+            <div class="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden border border-slate-700 mb-2">
+                <div id="compute-progress-bar" class="h-full bg-gradient-to-r from-sky-400 via-indigo-400 to-emerald-400 w-0 transition-all duration-150"></div>
+            </div>
+            <div class="flex items-center justify-between text-[11px] mono text-slate-400">
+                <span id="compute-phase-text">Fase 1: Kerangka Sudut</span>
+                <span id="compute-step-count" class="text-emerald-300 font-bold">0 langkah rumus</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Celebration Toast Banner -->
+    <div id="solved-banner" class="fixed top-24 sm:top-20 left-3 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-30 pointer-events-none opacity-0 transition-all duration-500 transform -translate-y-4 flex justify-center">
+        <div class="glass-panel solved-pulse rounded-2xl px-4 py-2.5 sm:px-6 sm:py-3 border border-emerald-500/50 flex items-center gap-3 shadow-2xl max-w-lg">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 font-bold flex-shrink-0">✓</div>
+            <div>
+                <div class="text-xs sm:text-sm font-bold text-white">Rubik Berhasil Diselesaikan Murni dengan Rumus!</div>
+                <div id="solved-subtext" class="text-[11px] sm:text-xs text-emerald-300">Seluruh stiker kembali ke posisi semula di GPU.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Left Control Dock -->
+    <aside id="control-drawer" class="fixed inset-x-2 bottom-28 top-auto max-h-[62dvh] lg:inset-x-auto lg:top-20 lg:left-3 lg:bottom-28 lg:max-h-none lg:w-96 z-20 flex flex-col justify-end lg:justify-start pointer-events-none transition-all duration-300 transform translate-y-[120%] opacity-0 lg:translate-y-0 lg:opacity-100">
+        <div class="glass-panel rounded-2xl p-3.5 sm:p-5 pointer-events-auto flex flex-col gap-3 max-h-full overflow-y-auto custom-scroll">
+            <div class="flex lg:hidden items-center justify-between pb-1 border-b border-slate-800">
+                <span class="text-xs font-extrabold uppercase tracking-wider text-sky-400">Pengaturan Ukuran & Rumus Rubik</span>
+                <button id="btn-close-drawer" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-700">✕ Tutup</button>
+            </div>
+
+            <div>
+                <div class="flex items-center justify-between mb-1">
+                    <label for="size-slider" class="text-xs font-bold uppercase tracking-wider text-slate-300">Ukuran Rubik (N × N × N)</label>
+                    <div class="flex items-center gap-1.5">
+                        <input id="size-input" type="number" min="2" max="400" value="3" class="w-16 bg-slate-900/90 border border-slate-700 rounded-lg px-2 py-1 text-right mono text-xs font-bold text-sky-400 focus:outline-none focus:border-sky-400">
+                        <span id="size-badge" class="mono text-xs font-semibold text-slate-400">× 3</span>
+                    </div>
+                </div>
+                <input id="size-slider" type="range" min="2" max="400" value="3" class="w-full my-1">
+                <div class="grid grid-cols-6 gap-1.5 mt-1.5">
+                    <button data-size="2" class="preset-btn py-1.5 rounded-lg text-xs mono font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/70 transition">2x2</button>
+                    <button data-size="3" class="preset-btn py-1.5 rounded-lg text-xs mono font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/40 transition">3x3</button>
+                    <button data-size="4" class="preset-btn py-1.5 rounded-lg text-xs mono font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/70 transition">4x4</button>
+                    <button data-size="10" class="preset-btn py-1.5 rounded-lg text-xs mono font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/70 transition">10x10</button>
+                    <button data-size="100" class="preset-btn py-1.5 rounded-lg text-xs mono font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/70 transition">100²</button>
+                    <button data-size="400" class="preset-btn py-1.5 rounded-lg text-xs mono font-semibold bg-slate-800/80 hover:bg-slate-700 text-amber-300 border border-amber-500/30 transition">400²</button>
+                </div>
+            </div>
+
+            <hr class="border-slate-800">
+
+            <div class="flex flex-col gap-2.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Kontrol Aksi & Rumus</span>
+                    <span class="mono text-xs text-slate-400">Antrean: <strong id="queue-count" class="text-sky-400">0</strong> | Acakan: <strong id="history-count" class="text-emerald-400">0</strong></span>
+                </div>
+
+                <div class="bg-slate-900/70 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                    <label for="scramble-count-input" class="text-[11px] font-medium text-slate-300">Jumlah Langkah Acak:</label>
+                    <div class="flex items-center gap-1.5">
+                        <input id="scramble-count-slider" type="range" min="5" max="500" value="25" class="w-24">
+                        <input id="scramble-count-input" type="number" min="1" max="2000" value="25" class="w-14 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-0.5 text-right mono text-xs font-bold text-amber-400">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/70 border border-slate-800 rounded-xl px-3 py-2 flex flex-col gap-1">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-semibold text-slate-200">Solver Piksel FBO (Tanpa Undo):</span>
+                        <span class="mono text-[10px] text-emerald-400 font-bold">Murni Rumus</span>
+                    </div>
+                    <div class="text-[10px] text-slate-400 leading-relaxed">
+                        • <strong>Fase 1:</strong> Kerangka Sudut / Kociemba 3×3<br>
+                        • <strong>Fase 2:</strong> Konjugat Wing-Edge <code class="text-sky-300">B · r_k · B'</code><br>
+                        • <strong>Fase 3:</strong> Komutator Pusat Niklas <code class="text-sky-300">[r_i, F · l_j · F']</code>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2.5">
+                    <button id="btn-scramble" class="btn-amber-glow py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
+                        </svg>
+                        <span id="scramble-label">Acak Rubik</span>
+                    </button>
+
+                    <button id="btn-solve" disabled class="btn-emerald-glow py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span>Selesaikan (Rumus)</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-4 gap-1.5">
+                    <button id="btn-instant-scramble" class="py-2 px-2 rounded-xl font-semibold text-[11px] bg-slate-800/90 hover:bg-slate-700 text-amber-300 border border-slate-700 transition">⚡ Acak Instan</button>
+                    <button id="btn-twist-step" class="py-2 px-2 rounded-xl font-semibold text-[11px] bg-slate-800/90 hover:bg-slate-700 text-sky-300 border border-slate-700 transition">↻ +1 Acak</button>
+                    <button id="btn-pause" disabled class="py-2 px-2 rounded-xl font-semibold text-[11px] bg-slate-800/90 hover:bg-slate-700 text-rose-300 border border-slate-700 transition disabled:opacity-40">⏸ Jeda</button>
+                    <button id="btn-reset" class="py-2 px-2 rounded-xl font-semibold text-[11px] bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">↺ Reset</button>
+                </div>
+            </div>
+
+            <hr class="border-slate-800">
+
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1">
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-sky-400">Log Rumus & Notasi Aktif</span>
+                    <span id="active-phase-badge" class="mono text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-emerald-300">Siap</span>
+                </div>
+                <div id="formula-stream-box" class="mono text-[11px] text-slate-300 h-11 overflow-y-auto leading-relaxed select-text">
+                    Pilih ukuran (2×2 s/d 400×400), klik "Acak Rubik", lalu klik "Selesaikan (Rumus)".
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between bg-slate-900/70 border border-slate-800 rounded-xl px-3.5 py-2">
+                    <div>
+                        <div class="text-xs font-bold text-slate-200">Mode Siklus Otomatis</div>
+                        <div class="text-[10px] text-slate-400">Otomatis acak & selesaikan dengan rumus</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="auto-loop-toggle" class="sr-only peer">
+                        <div class="w-10 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
+                    </label>
+                </div>
+
+                <div class="hidden lg:flex items-center justify-between bg-slate-900/70 border border-slate-800 rounded-xl px-3.5 py-2">
+                    <div>
+                        <div class="text-xs font-semibold text-slate-300">Tampilkan Tekstur FBO GPU</div>
+                        <div class="text-[10px] text-slate-400">Lihat memori warna 2D (<span id="note-stickers">54</span> stiker) di GPU</div>
+                    </div>
+                    <button id="btn-toggle-fbo" class="px-2.5 py-1 rounded-lg text-xs mono font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:bg-sky-500/30 transition">Aktif</button>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Bottom Speed & Mobile Action Bar -->
+    <div class="fixed bottom-2 sm:bottom-3 left-2 sm:left-3 right-2 sm:right-3 lg:right-72 z-10 pointer-events-auto flex flex-col gap-1.5">
+        <div class="flex lg:hidden items-center gap-1.5 glass-panel rounded-xl p-1.5">
+            <button id="mob-btn-scramble" class="flex-1 py-2 px-2.5 rounded-lg font-bold text-xs bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow flex items-center justify-center gap-1.5 active:scale-95 transition">
+                <span>🔀</span> <span id="mob-scramble-label">Acak</span>
+            </button>
+            <button id="mob-btn-solve" disabled class="flex-1 py-2 px-2.5 rounded-lg font-bold text-xs bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none active:scale-95 transition">
+                <span>✓</span> <span>Rumus Solve</span>
+            </button>
+            <button id="mob-btn-instant" class="py-2 px-2.5 rounded-lg font-semibold text-xs bg-slate-800/90 text-amber-300 border border-slate-700 active:scale-95 transition" title="Acak Instan">⚡</button>
+            <button id="mob-btn-size-quick" class="py-2 px-2.5 rounded-lg font-bold mono text-xs bg-sky-500/20 text-sky-300 border border-sky-500/40 active:scale-95 transition">
+                <span id="mob-size-indicator">3×3</span> ⚙
+            </button>
+        </div>
+
+        <div class="glass-panel rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 flex flex-col gap-1.5 sm:gap-2">
+            <div class="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+                <div class="flex items-center gap-1.5 sm:gap-2.5">
+                    <span class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-sky-400">⚡ Kecepatan</span>
+                    <span id="speed-mode-badge" class="text-[9px] sm:text-[10px] mono font-semibold px-1.5 sm:px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 border border-sky-500/30 truncate max-w-[145px] sm:max-w-none">Normal (3.0/dtk)</span>
+                </div>
+
+                <div class="hidden sm:flex flex-wrap items-center gap-1">
+                    <button data-tps="0.25" class="speed-preset px-2 py-0.5 rounded-md text-[11px] mono bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">0.25/dtk</button>
+                    <button data-tps="1" class="speed-preset px-2 py-0.5 rounded-md text-[11px] mono bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">1/dtk</button>
+                    <button data-tps="3" class="speed-preset px-2 py-0.5 rounded-md text-[11px] mono bg-sky-500/25 text-sky-300 border border-sky-400/50 transition">3/dtk</button>
+                    <button data-tps="10" class="speed-preset px-2 py-0.5 rounded-md text-[11px] mono bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">10/dtk</button>
+                    <button data-tps="30" class="speed-preset px-2 py-0.5 rounded-md text-[11px] mono bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">30/dtk</button>
+                    <button data-tps="120" class="speed-preset px-2 py-0.5 rounded-md text-[11px] mono bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition">120/dtk</button>
+                    <button data-tps="600" class="speed-preset px-2 py-0.5 rounded-md text-[11px] mono bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 transition">600/dtk</button>
+                    <button data-tps="2500" class="speed-preset px-2 py-0.5 rounded-md text-[11px] mono bg-slate-800 hover:bg-slate-700 text-rose-300 border border-rose-500/40 transition">2500/dtk</button>
+                </div>
+
+                <div class="flex items-center gap-1">
+                    <button id="speed-dec" class="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center">−</button>
+                    <input id="speed-tps-input" type="number" min="0.1" max="2500" step="0.1" value="3.0" class="w-16 sm:w-20 bg-slate-900 border border-slate-700 rounded-lg px-1.5 sm:px-2 py-0.5 text-right mono text-xs font-bold text-sky-400 focus:outline-none focus:border-sky-400">
+                    <span class="mono text-[10px] sm:text-[11px] text-slate-400">/dtk</span>
+                    <button id="speed-inc" class="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center">+</button>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+                <span class="mono text-[9px] sm:text-[10px] text-slate-400 whitespace-nowrap">0.1/dtk</span>
+                <input id="speed-slider" type="range" min="0" max="1000" step="1" value="340" class="w-full">
+                <span class="mono text-[9px] sm:text-[10px] text-amber-400 whitespace-nowrap">2500/dtk</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom-Right Live GPU State Texture Atlas Preview -->
+    <div id="fbo-preview-card" class="fixed bottom-3 right-3 z-10 pointer-events-auto hidden lg:flex flex-col glass-panel rounded-2xl p-3 w-64 transition-opacity duration-300">
+        <div class="flex items-center justify-between mb-1">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-300">Memori Tekstur FBO GPU (6 Sisi)</span>
+            <span id="fbo-res-label" class="mono text-[10px] text-sky-400">12×6 px</span>
+        </div>
+        <div class="text-[10px] text-slate-400 mb-1.5">Atlas tekstur <code class="text-slate-300">(4N × 2N)</code> di VRAM GPU:</div>
+        <div class="grid grid-cols-4 gap-1 text-[9px] mono text-center text-slate-400 mb-1">
+            <span>+X (Kanan)</span><span>-X (Kiri)</span><span>+Y (Atas)</span><span>-Y (Bawah)</span>
+        </div>
+        <div id="fbo-viewport-placeholder" class="w-full h-24 rounded-xl border border-slate-700/80 bg-slate-950/60 relative overflow-hidden">
+            <div class="absolute bottom-1 right-2 text-[9px] mono text-slate-300 bg-slate-950/80 px-1.5 py-0.5 rounded pointer-events-none">Live WebGL FBO Pass</div>
+        </div>
+    </div>
+
+    <script>
+        window.onload = function () {
+            const container = document.getElementById('canvas-container');
+            const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.autoClear = false;
+            container.appendChild(renderer.domElement);
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+
+            const orbit = {
+                theta: 0.68, phi: 1.04, radius: 4.5,
+                targetTheta: 0.68, targetPhi: 1.04, targetRadius: 4.5,
+                userZoomFactor: 1.0,
+                lookAtOffset: new THREE.Vector3(0, 0, 0),
+                isDragging: false, lastX: 0, lastY: 0,
+                activePointers: new Map(), lastPinchDist: 0
+            };
+
+            function computeResponsiveCameraFraming() {
+                const w = window.innerWidth, h = window.innerHeight;
+                const aspect = w / Math.max(1, h);
+                camera.aspect = aspect;
+                camera.updateProjectionMatrix();
+
+                const vHalf = THREE.MathUtils.degToRad(camera.fov / 2);
+                const hHalf = Math.atan(Math.tan(vHalf) * aspect);
+                const usableFrac = w < 1024 ? 0.86 : 0.8;
+                const baseDist = 1.8 / Math.sin(Math.min(vHalf, hHalf)) / usableFrac;
+                orbit.targetRadius = Math.max(2.3, Math.min(30, baseDist * orbit.userZoomFactor));
+
+                const shiftX = w >= 1024 ? 198 : 0;
+                const shiftY = w < 1024 ? 25 : 0;
+                if (shiftX || shiftY) camera.setViewOffset(w, h, -shiftX, shiftY, w, h);
+                else camera.clearViewOffset();
+                orbit.lookAtOffset.set(0, 0, 0);
+            }
+
+            function updateCamera() {
+                orbit.theta += (orbit.targetTheta - orbit.theta) * 0.15;
+                orbit.phi += (orbit.targetPhi - orbit.phi) * 0.15;
+                orbit.radius += (orbit.targetRadius - orbit.radius) * 0.15;
+                const sinPhi = Math.sin(orbit.phi);
+                camera.position.set(
+                    orbit.lookAtOffset.x + orbit.radius * sinPhi * Math.sin(orbit.theta),
+                    orbit.lookAtOffset.y + orbit.radius * Math.cos(orbit.phi),
+                    orbit.lookAtOffset.z + orbit.radius * sinPhi * Math.cos(orbit.theta)
+                );
+                camera.lookAt(orbit.lookAtOffset);
+            }
+
+            const domElem = renderer.domElement;
+            domElem.addEventListener('pointerdown', (e) => {
+                orbit.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                domElem.setPointerCapture(e.pointerId);
+                if (orbit.activePointers.size === 1) {
+                    orbit.isDragging = true;
+                    orbit.lastX = e.clientX;
+                    orbit.lastY = e.clientY;
+                } else if (orbit.activePointers.size === 2) {
+                    orbit.isDragging = false;
+                    const pts = Array.from(orbit.activePointers.values());
+                    orbit.lastPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+                }
+            });
+
+            domElem.addEventListener('pointermove', (e) => {
+                if (!orbit.activePointers.has(e.pointerId)) return;
+                orbit.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                if (orbit.activePointers.size === 1 && orbit.isDragging) {
+                    const dx = e.clientX - orbit.lastX;
+                    const dy = e.clientY - orbit.lastY;
+                    orbit.lastX = e.clientX;
+                    orbit.lastY = e.clientY;
+                    orbit.targetTheta -= dx * 0.0075;
+                    orbit.targetPhi = Math.max(0.15, Math.min(Math.PI - 0.15, orbit.targetPhi - dy * 0.0075));
+                } else if (orbit.activePointers.size === 2) {
+                    const pts = Array.from(orbit.activePointers.values());
+                    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+                    if (orbit.lastPinchDist > 10) {
+                        const scale = orbit.lastPinchDist / Math.max(10, dist);
+                        orbit.userZoomFactor = Math.max(0.55, Math.min(2.2, orbit.userZoomFactor * scale));
+                        computeResponsiveCameraFraming();
+                    }
+                    orbit.lastPinchDist = dist;
+                }
+            });
+
+            function handlePointerEnd(e) {
+                orbit.activePointers.delete(e.pointerId);
+                try { domElem.releasePointerCapture(e.pointerId); } catch (_) {}
+                if (orbit.activePointers.size === 1) {
+                    const remaining = Array.from(orbit.activePointers.values())[0];
+                    orbit.isDragging = true;
+                    orbit.lastX = remaining.x;
+                    orbit.lastY = remaining.y;
+                } else if (orbit.activePointers.size === 0) {
+                    orbit.isDragging = false;
+                }
+            }
+            domElem.addEventListener('pointerup', handlePointerEnd);
+            domElem.addEventListener('pointercancel', handlePointerEnd);
+            domElem.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                orbit.userZoomFactor = Math.max(0.55, Math.min(2.2, orbit.userZoomFactor + e.deltaY * 0.0008));
+                computeResponsiveCameraFraming();
+            }, { passive: false });
+
+            const bgScene = new THREE.Scene();
+            const bgCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+                depthWrite: false, depthTest: false,
+                vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+                fragmentShader: `precision mediump float; varying vec2 vUv; void main() { float d = length(vUv - 0.5); gl_FragColor = vec4(mix(vec3(0.06, 0.095, 0.17), vec3(0.02, 0.03, 0.055), clamp(d * 1.35, 0.0, 1.0)), 1.0); }`
+            })));
+
+            const sharedGLSLMappings = `
+                vec3 faceUvToPos(float faceId, vec2 uv) {
+                    vec2 c = uv * 2.0 - 1.0;
+                    if (faceId < 0.5) return vec3( 1.0,  c.y, -c.x);
+                    if (faceId < 1.5) return vec3(-1.0,  c.y,  c.x);
+                    if (faceId < 2.5) return vec3( c.x,  1.0, -c.y);
+                    if (faceId < 3.5) return vec3( c.x, -1.0,  c.y);
+                    if (faceId < 4.5) return vec3( c.x,  c.y,  1.0);
+                    return vec3(-c.x,  c.y, -1.0);
+                }
+                vec2 posNormalToAtlasUV(vec3 p, vec3 n, float N) {
+                    vec3 an = abs(n);
+                    float faceId = 0.0;
+                    vec2 c = vec2(0.0);
+                    if (an.x > an.y && an.x > an.z) {
+                        if (n.x > 0.0) { faceId = 0.0; c = vec2(-p.z, p.y); }
+                        else           { faceId = 1.0; c = vec2( p.z, p.y); }
+                    } else if (an.y > an.x && an.y > an.z) {
+                        if (n.y > 0.0) { faceId = 2.0; c = vec2( p.x, -p.z); }
+                        else           { faceId = 3.0; c = vec2( p.x,  p.z); }
+                    } else {
+                        if (n.z > 0.0) { faceId = 4.0; c = vec2( p.x, p.y); }
+                        else           { faceId = 5.0; c = vec2(-p.x, p.y); }
+                    }
+                    vec2 uv = clamp(0.5 * (c + 1.0), 0.0, 0.999999);
+                    vec2 snappedUv = (floor(uv * N) + 0.5) / N;
+                    float rowTile = floor(faceId / 4.0 + 0.001);
+                    float colTile = faceId - rowTile * 4.0;
+                    return vec2((colTile + snappedUv.x) / 4.0, (rowTile + snappedUv.y) / 2.0);
+                }
+                vec3 rotate90(vec3 v, float axis, float dir) {
+                    float s = sign(dir);
+                    if (axis < 0.5) return vec3(v.x, -s * v.z,  s * v.y);
+                    if (axis < 1.5) return vec3( s * v.z, v.y, -s * v.x);
+                    return vec3(-s * v.y,  s * v.x, v.z);
+                }
+            `;
+
+            const fboQuadScene = new THREE.Scene();
+            const fboOrthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            const fboQuadMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), null);
+            fboQuadScene.add(fboQuadMesh);
+
+            const initFboMaterial = new THREE.ShaderMaterial({
+                vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+                fragmentShader: `
+                    precision highp float;
+                    varying vec2 vUv;
+                    void main() {
+                        float faceId = floor(vUv.y * 2.0) * 4.0 + floor(vUv.x * 4.0);
+                        vec3 color = vec3(0.08, 0.10, 0.14);
+                        if (faceId < 0.5)      color = vec3(0.95, 0.16, 0.20);
+                        else if (faceId < 1.5) color = vec3(1.00, 0.48, 0.04);
+                        else if (faceId < 2.5) color = vec3(0.97, 0.98, 1.00);
+                        else if (faceId < 3.5) color = vec3(0.98, 0.85, 0.06);
+                        else if (faceId < 4.5) color = vec3(0.05, 0.80, 0.36);
+                        else if (faceId < 5.5) color = vec3(0.10, 0.46, 0.98);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            const transitionMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uStateTex: { value: null }, uN: { value: 3.0 },
+                    uAxis: { value: 0.0 }, uSliceStart: { value: 0.0 },
+                    uSliceEnd: { value: 0.0 }, uDir: { value: 1.0 }
+                },
+                vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+                fragmentShader: `
+                    precision highp float;
+                    varying vec2 vUv;
+                    uniform sampler2D uStateTex;
+                    uniform float uN, uAxis, uSliceStart, uSliceEnd, uDir;
+                    ${sharedGLSLMappings}
+                    void main() {
+                        float faceId = floor(vUv.y * 2.0) * 4.0 + floor(vUv.x * 4.0);
+                        if (faceId > 5.5) { gl_FragColor = vec4(0.05, 0.07, 0.11, 1.0); return; }
+                        vec2 localUv = fract(vec2(vUv.x * 4.0, vUv.y * 2.0));
+                        vec2 centerUv = (floor(localUv * uN) + 0.5) / uN;
+                        vec3 pos = faceUvToPos(faceId, centerUv);
+                        vec3 normal = faceId < 0.5 ? vec3(1,0,0) : (faceId < 1.5 ? vec3(-1,0,0) : (faceId < 2.5 ? vec3(0,1,0) : (faceId < 3.5 ? vec3(0,-1,0) : (faceId < 4.5 ? vec3(0,0,1) : vec3(0,0,-1)))));
+                        float coord = (uAxis < 0.5) ? pos.x : ((uAxis < 1.5) ? pos.y : pos.z);
+                        float sliceIdx = clamp(floor(((coord + 1.0) * 0.5) * uN), 0.0, uN - 1.0);
+                        if (sliceIdx >= uSliceStart - 0.1 && sliceIdx <= uSliceEnd + 0.1) {
+                            vec3 prevPos = rotate90(pos, uAxis, -uDir);
+                            vec3 prevNormal = rotate90(normal, uAxis, -uDir);
+                            gl_FragColor = texture2D(uStateTex, posNormalToAtlasUV(prevPos, prevNormal, uN));
+                        } else {
+                            gl_FragColor = texture2D(uStateTex, vUv);
+                        }
+                    }
+                `
+            });
+
+            function createSliceBoxMaterial() {
+                return new THREE.ShaderMaterial({
+                    extensions: { derivatives: true },
+                    uniforms: {
+                        uStateTex: { value: null }, uN: { value: 3.0 },
+                        uAxis: { value: 0.0 }, uAngle: { value: 0.0 },
+                        uBoxMin: { value: new THREE.Vector3(-1, -1, -1) },
+                        uBoxMax: { value: new THREE.Vector3(1, 1, 1) }
+                    },
+                    vertexShader: `
+                        uniform float uAxis, uAngle;
+                        uniform vec3 uBoxMin, uBoxMax;
+                        varying vec3 vCanonicalPos, vCanonicalNormal, vWorldNormal, vWorldPos;
+                        vec3 rotateAxisAngle(vec3 v, float axis, float angle) {
+                            float c = cos(angle), s = sin(angle);
+                            if (axis < 0.5) return vec3(v.x, c * v.y - s * v.z, s * v.y + c * v.z);
+                            if (axis < 1.5) return vec3(c * v.x + s * v.z, v.y, -s * v.x + c * v.z);
+                            return vec3(c * v.x - s * v.y, s * v.x + c * v.y, v.z);
+                        }
+                        void main() {
+                            vec3 cPos = mix(uBoxMin, uBoxMax, position + vec3(0.5));
+                            vCanonicalPos = cPos;
+                            vCanonicalNormal = normal;
+                            vWorldPos = rotateAxisAngle(cPos, uAxis, uAngle);
+                            vWorldNormal = rotateAxisAngle(normal, uAxis, uAngle);
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(vWorldPos, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        precision highp float;
+                        uniform sampler2D uStateTex;
+                        uniform float uN, uAxis;
+                        varying vec3 vCanonicalPos, vCanonicalNormal, vWorldNormal, vWorldPos;
+                        ${sharedGLSLMappings}
+                        void main() {
+                            vec3 n = normalize(vCanonicalNormal);
+                            vec3 worldN = normalize(vWorldNormal);
+                            vec3 V = normalize(cameraPosition - vWorldPos);
+                            vec3 L1 = normalize(vec3(0.65, 0.85, 0.55));
+                            vec3 L2 = normalize(vec3(-0.6, -0.35, 0.65));
+                            float diff1 = max(dot(worldN, L1), 0.0);
+                            float diff2 = max(dot(worldN, L2), 0.0) * 0.35;
+                            vec3 plasticColor = vec3(0.055, 0.06, 0.075);
+
+                            if (dot(vCanonicalPos, n) <= 0.998) {
+                                vec3 cPos = (vCanonicalPos * 0.5 + 0.5) * uN;
+                                vec2 gridUV = (abs(n.x) > 0.5) ? cPos.yz : ((abs(n.y) > 0.5) ? cPos.xz : cPos.xy);
+                                vec2 f = abs(fract(gridUV) - 0.5);
+                                float groove = smoothstep(0.45, 0.49, max(f.x, f.y));
+                                vec3 coreCol = mix(vec3(0.09, 0.10, 0.125), vec3(0.02, 0.025, 0.03), groove);
+                                float spec = pow(max(dot(worldN, normalize(L1 + V)), 0.0), 24.0) * 0.22;
+                                gl_FragColor = vec4(coreCol * (0.45 + 0.55 * diff1 + diff2) + spec, 1.0);
+                                return;
+                            }
+
+                            vec3 an = abs(n);
+                            vec2 facePlane = (an.x > 0.5) ? vCanonicalPos.zy : ((an.y > 0.5) ? vCanonicalPos.xz : vCanonicalPos.xy);
+                            vec2 gridCoord = (facePlane * 0.5 + 0.5) * uN;
+                            vec2 localSticker = fract(gridCoord) - 0.5;
+                            vec3 stickerColor = texture2D(uStateTex, posNormalToAtlasUV(vCanonicalPos, n, uN)).rgb;
+
+                            float gapHalfWidth = clamp(0.062 + uN * 0.00018, 0.062, 0.14);
+                            float cornerRadius = clamp(0.14 - uN * 0.0002, 0.04, 0.14);
+                            vec2 q = abs(localSticker) - vec2(0.5 - gapHalfWidth - cornerRadius);
+                            float sdf = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - cornerRadius;
+                            float fw = clamp(max(fwidth(gridCoord.x), fwidth(gridCoord.y)), 0.002, 0.25);
+                            float stickerMask = 1.0 - smoothstep(-fw * 0.75, fw * 0.75, sdf);
+
+                            vec3 H1 = normalize(L1 + V);
+                            float spec = mix(pow(max(dot(worldN, H1), 0.0), 18.0) * 0.15, pow(max(dot(worldN, H1), 0.0), 42.0) * 0.38, stickerMask);
+                            float fresnel = pow(1.0 - max(dot(worldN, V), 0.0), 4.0) * 0.10;
+                            vec3 baseCol = mix(plasticColor, stickerColor, stickerMask);
+                            gl_FragColor = vec4(baseCol * (0.36 + 0.66 * diff1 + diff2) + vec3(spec + fresnel), 1.0);
+                        }
+                    `
+                });
+            }
+
+            const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+            const matLower = createSliceBoxMaterial(), matMid = createSliceBoxMaterial(), matUpper = createSliceBoxMaterial();
+            const meshLower = new THREE.Mesh(unitBoxGeo, matLower), meshMid = new THREE.Mesh(unitBoxGeo, matMid), meshUpper = new THREE.Mesh(unitBoxGeo, matUpper);
+            meshLower.frustumCulled = meshMid.frustumCulled = meshUpper.frustumCulled = false;
+            scene.add(meshLower, meshMid, meshUpper);
+
+            function updateSliceGeometryUniforms(N, axis, sliceStart, sliceEnd, angle) {
+                const splitLow  = -1.0 + 2.0 * (sliceStart / N);
+                const splitHigh = -1.0 + 2.0 * ((sliceEnd + 1.0) / N);
+                if (sliceStart > 0.01) {
+                    meshLower.visible = true;
+                    matLower.uniforms.uAxis.value = axis;
+                    matLower.uniforms.uAngle.value = 0.0;
+                    matLower.uniforms.uBoxMin.value.set(-1, -1, -1);
+                    matLower.uniforms.uBoxMax.value.set(axis === 0 ? splitLow : 1, axis === 1 ? splitLow : 1, axis === 2 ? splitLow : 1);
+                } else meshLower.visible = false;
+
+                meshMid.visible = true;
+                matMid.uniforms.uAxis.value = axis;
+                matMid.uniforms.uAngle.value = angle;
+                matMid.uniforms.uBoxMin.value.set(axis === 0 ? splitLow : -1, axis === 1 ? splitLow : -1, axis === 2 ? splitLow : -1);
+                matMid.uniforms.uBoxMax.value.set(axis === 0 ? splitHigh : 1, axis === 1 ? splitHigh : 1, axis === 2 ? splitHigh : 1);
+
+                if (sliceEnd < N - 1 - 0.01) {
+                    meshUpper.visible = true;
+                    matUpper.uniforms.uAxis.value = axis;
+                    matUpper.uniforms.uAngle.value = 0.0;
+                    matUpper.uniforms.uBoxMin.value.set(axis === 0 ? splitHigh : -1, axis === 1 ? splitHigh : -1, axis === 2 ? splitHigh : -1);
+                    matUpper.uniforms.uBoxMax.value.set(1, 1, 1);
+                } else meshUpper.visible = false;
+            }
+
+            const previewScene = new THREE.Scene();
+            const previewMat = new THREE.ShaderMaterial({
+                uniforms: { uTex: { value: null } },
+                vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+                fragmentShader: `
+                    precision mediump float; varying vec2 vUv; uniform sampler2D uTex;
+                    void main() {
+                        vec3 col = texture2D(uTex, vUv).rgb;
+                        vec2 g = abs(fract(vec2(vUv.x * 4.0, vUv.y * 2.0)) - 0.5);
+                        gl_FragColor = vec4(mix(col, vec3(0.05, 0.08, 0.14), smoothstep(0.475, 0.495, max(g.x, g.y))), 1.0);
+                    }
+                `
+            });
+            previewScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), previewMat));
+
+            let cubeSize = 3, fboA = null, fboB = null, currentFbo = null, nextFbo = null;
+            let scrambleCounter = 0, moveQueue = [], activeMove = null;
+            let currentMode = 'SOLVED', isPaused = false, showFboPreview = true;
+            let autoLoopTimer = null, isComputingFormula = false, cancelComputeRequested = false;
+            let turnsPerSecond = 3.0;
+
+            function syncFboTexturesToMaterials() {
+                matLower.uniforms.uStateTex.value = matMid.uniforms.uStateTex.value = matUpper.uniforms.uStateTex.value = currentFbo.texture;
+                matLower.uniforms.uN.value = matMid.uniforms.uN.value = matUpper.uniforms.uN.value = cubeSize;
+                previewMat.uniforms.uTex.value = currentFbo.texture;
+            }
+
+            function createPingPongFBOs(N) {
+                if (fboA) fboA.dispose();
+                if (fboB) fboB.dispose();
+                const params = { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false, stencilBuffer: false };
+                fboA = new THREE.WebGLRenderTarget(4 * N, 2 * N, params);
+                fboB = new THREE.WebGLRenderTarget(4 * N, 2 * N, params);
+                fboQuadMesh.material = initFboMaterial;
+                renderer.setRenderTarget(fboA);
+                renderer.render(fboQuadScene, fboOrthoCam);
+                renderer.setRenderTarget(null);
+                currentFbo = fboA;
+                nextFbo = fboB;
+                syncFboTexturesToMaterials();
+                updateSliceGeometryUniforms(N, 0, 0, N - 1, 0.0);
+                updateTelemetryStatic(N);
+            }
+
+            function commitMoveOnGPU(move) {
+                transitionMaterial.uniforms.uStateTex.value = currentFbo.texture;
+                transitionMaterial.uniforms.uN.value = cubeSize;
+                transitionMaterial.uniforms.uAxis.value = move.axis;
+                transitionMaterial.uniforms.uSliceStart.value = move.sliceStart;
+                transitionMaterial.uniforms.uSliceEnd.value = move.sliceEnd;
+                transitionMaterial.uniforms.uDir.value = move.dir;
+                fboQuadMesh.material = transitionMaterial;
+                renderer.setRenderTarget(nextFbo);
+                renderer.render(fboQuadScene, fboOrthoCam);
+                renderer.setRenderTarget(null);
+                const temp = currentFbo; currentFbo = nextFbo; nextFbo = temp;
+                syncFboTexturesToMaterials();
+            }
+
+            function moveToNotation(mv, N) {
+                const s = mv.sliceStart, e = mv.sliceEnd, isPos = (s + e) * 0.5 >= (N - 1) * 0.5;
+                const faceChar = mv.axis === 0 ? (isPos ? 'R' : 'L') : (mv.axis === 1 ? (isPos ? 'U' : 'D') : (isPos ? 'F' : 'B'));
+                const cwSign = isPos ? -1 : 1;
+                const suffix = (mv.dir === cwSign) ? "" : "'";
+                const d1 = isPos ? (N - 1 - e) + 1 : s + 1;
+                const d2 = isPos ? (N - 1 - s) + 1 : e + 1;
+                if (d1 === 1 && d2 === 1) return `${faceChar}${suffix}`;
+                if (d1 === 1) return `${d2 > 2 ? d2 : ''}${faceChar}w${suffix}`;
+                if (d1 === d2) return `${d1}${faceChar}${suffix}`;
+                return `${d1}-${d2}${faceChar}w${suffix}`;
+            }
+
+            function generateRandomMove(N, lastAxis = -1) {
+                let axis = Math.floor(Math.random() * 3);
+                if (axis === lastAxis && Math.random() < 0.65) axis = (axis + 1 + Math.floor(Math.random() * 2)) % 3;
+                let maxSpan = N >= 8 ? Math.max(1, Math.floor(N * (Math.random() < 0.7 ? 0.08 : 0.22))) : 1;
+                const span = Math.floor(Math.random() * maxSpan);
+                const sliceStart = Math.floor(Math.random() * (N - span));
+                return { axis, sliceStart, sliceEnd: Math.min(N - 1, sliceStart + span), dir: Math.random() < 0.5 ? 1 : -1 };
+            }
+
+            // UI Elements
+            const hudFps = document.getElementById('hud-fps'), hudMs = document.getElementById('hud-ms');
+            const hudStickers = document.getElementById('hud-stickers'), hudMethod = document.getElementById('hud-method'), hudVram = document.getElementById('hud-vram');
+            const statusText = document.getElementById('status-text'), statusDot = document.getElementById('status-dot');
+            const queueCountEl = document.getElementById('queue-count'), historyCountEl = document.getElementById('history-count');
+            const noteStickers = document.getElementById('note-stickers'), fboResLabel = document.getElementById('fbo-res-label');
+            const solvedBanner = document.getElementById('solved-banner'), solvedSubtext = document.getElementById('solved-subtext');
+            const solverComputeModal = document.getElementById('solver-compute-modal');
+            const computeTitle = document.getElementById('compute-title'), computeSubtitle = document.getElementById('compute-subtitle');
+            const computeProgressBar = document.getElementById('compute-progress-bar'), computePhaseText = document.getElementById('compute-phase-text'), computeStepCount = document.getElementById('compute-step-count');
+            const btnCancelCompute = document.getElementById('btn-cancel-compute');
+            const formulaStreamBox = document.getElementById('formula-stream-box'), activePhaseBadge = document.getElementById('active-phase-badge');
+            const sizeSlider = document.getElementById('size-slider'), sizeInput = document.getElementById('size-input'), sizeBadge = document.getElementById('size-badge');
+            const presetBtns = document.querySelectorAll('.preset-btn');
+            const scrambleCountSlider = document.getElementById('scramble-count-slider'), scrambleCountInput = document.getElementById('scramble-count-input');
+            const btnScramble = document.getElementById('btn-scramble'), scrambleLabel = document.getElementById('scramble-label');
+            const btnSolve = document.getElementById('btn-solve'), btnInstantScramble = document.getElementById('btn-instant-scramble');
+            const btnTwistStep = document.getElementById('btn-twist-step'), btnPause = document.getElementById('btn-pause'), btnReset = document.getElementById('btn-reset');
+            const speedSlider = document.getElementById('speed-slider'), speedTpsInput = document.getElementById('speed-tps-input'), speedModeBadge = document.getElementById('speed-mode-badge');
+            const speedPresets = document.querySelectorAll('.speed-preset'), speedDecBtn = document.getElementById('speed-dec'), speedIncBtn = document.getElementById('speed-inc');
+            const autoLoopToggle = document.getElementById('auto-loop-toggle'), btnToggleFbo = document.getElementById('btn-toggle-fbo');
+            const fboPreviewCard = document.getElementById('fbo-preview-card'), fboViewportPlaceholder = document.getElementById('fbo-viewport-placeholder');
+            const controlDrawer = document.getElementById('control-drawer'), btnMobileDrawer = document.getElementById('btn-mobile-drawer'), mobileDrawerLabel = document.getElementById('mobile-drawer-label'), btnCloseDrawer = document.getElementById('btn-close-drawer'), btnFitCam = document.getElementById('btn-fit-cam');
+            const mobBtnScramble = document.getElementById('mob-btn-scramble'), mobScrambleLabel = document.getElementById('mob-scramble-label'), mobBtnSolve = document.getElementById('mob-btn-solve'), mobBtnInstant = document.getElementById('mob-btn-instant'), mobBtnSizeQuick = document.getElementById('mob-btn-size-quick'), mobSizeIndicator = document.getElementById('mob-size-indicator');
+
+            let isMobileDrawerOpen = false;
+            function toggleMobileDrawer(forceState) {
+                isMobileDrawerOpen = typeof forceState === 'boolean' ? forceState : !isMobileDrawerOpen;
+                controlDrawer.classList.toggle('translate-y-[120%]', !isMobileDrawerOpen);
+                controlDrawer.classList.toggle('opacity-0', !isMobileDrawerOpen);
+                controlDrawer.classList.toggle('translate-y-0', isMobileDrawerOpen);
+                controlDrawer.classList.toggle('opacity-100', isMobileDrawerOpen);
+                mobileDrawerLabel.textContent = isMobileDrawerOpen ? 'Tutup' : 'Panel';
+            }
+
+            btnMobileDrawer.addEventListener('click', () => toggleMobileDrawer());
+            btnCloseDrawer.addEventListener('click', () => toggleMobileDrawer(false));
+            if (mobBtnSizeQuick) mobBtnSizeQuick.addEventListener('click', () => toggleMobileDrawer());
+            btnFitCam.addEventListener('click', () => { orbit.userZoomFactor = 1.0; orbit.targetTheta = 0.68; orbit.targetPhi = 1.04; computeResponsiveCameraFraming(); });
+            btnCancelCompute.addEventListener('click', () => { cancelComputeRequested = true; });
+
+            const formatNumberID = num => num.toLocaleString('id-ID');
+
+            function updateTelemetryStatic(N) {
+                const totalStickers = 6 * N * N;
+                hudStickers.textContent = noteStickers.textContent = formatNumberID(totalStickers);
+                hudVram.textContent = `${((2 * (4 * N) * (2 * N) * 4) / (1024 * 1024)).toFixed(2)} MB`;
+                fboResLabel.textContent = `${4 * N}×${2 * N} px`;
+                hudMethod.textContent = N === 2 ? 'BFS Optimal 2×2' : (N === 3 ? 'Kociemba 2-Fase' : `Orbit ${N}×${N} + Niklas`);
+            }
+
+            function updateCountersUI() {
+                queueCountEl.textContent = formatNumberID(moveQueue.length + (activeMove ? 1 : 0));
+                historyCountEl.textContent = formatNumberID(scrambleCounter);
+            }
+
+            function updateStatusUI(mode) {
+                currentMode = mode;
+                updateCountersUI();
+                if (mode === 'SOLVED') {
+                    statusText.textContent = 'TERSELESAIKAN';
+                    statusText.className = 'text-emerald-400 truncate max-w-[130px] sm:max-w-none';
+                    statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0';
+                    scrambleLabel.textContent = 'Acak Rubik'; mobScrambleLabel.textContent = 'Acak';
+                    btnSolve.disabled = mobBtnSolve.disabled = btnPause.disabled = true;
+                    btnScramble.disabled = mobBtnScramble.disabled = false;
+                    activePhaseBadge.textContent = 'Selesai ✓';
+                } else if (mode === 'SCRAMBLING') {
+                    statusText.textContent = isPaused ? 'DIJEDA (ACAK)' : 'MENGACAK...';
+                    statusText.className = 'text-amber-400 truncate max-w-[130px] sm:max-w-none';
+                    statusDot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping flex-shrink-0';
+                    scrambleLabel.textContent = 'Acak Ulang'; mobScrambleLabel.textContent = 'Acak';
+                    btnSolve.disabled = mobBtnSolve.disabled = btnPause.disabled = false;
+                    activePhaseBadge.textContent = 'Mengacak';
+                } else if (mode === 'SCRAMBLED') {
+                    statusText.textContent = 'TERACAK (SIAP RUMUS)';
+                    statusText.className = 'text-sky-400 truncate max-w-[130px] sm:max-w-none';
+                    statusDot.className = 'w-2 h-2 rounded-full bg-sky-400 animate-pulse flex-shrink-0';
+                    scrambleLabel.textContent = mobScrambleLabel.textContent = 'Acak Lagi';
+                    btnSolve.disabled = mobBtnSolve.disabled = btnScramble.disabled = mobBtnScramble.disabled = false;
+                    btnPause.disabled = true;
+                    activePhaseBadge.textContent = 'Siap Solve';
+                } else if (mode === 'SOLVING') {
+                    statusText.textContent = isPaused ? 'DIJEDA (RUMUS)' : 'MENYELESAIKAN...';
+                    statusText.className = 'text-emerald-300 truncate max-w-[130px] sm:max-w-none';
+                    statusDot.className = 'w-2 h-2 rounded-full bg-emerald-300 animate-ping flex-shrink-0';
+                    btnSolve.disabled = mobBtnSolve.disabled = true;
+                    btnPause.disabled = false;
+                }
+            }
+
+            let lastSolveInfo = '';
+            function showSolvedCelebration() {
+                solvedSubtext.textContent = `Rubik ${cubeSize}×${cubeSize} (${formatNumberID(6 * cubeSize * cubeSize)} stiker) selesai murni dengan rumus!${lastSolveInfo}`;
+                solvedBanner.classList.remove('opacity-0', '-translate-y-4');
+                solvedBanner.classList.add('opacity-100', 'translate-y-0');
+                setTimeout(() => {
+                    if (currentMode === 'SOLVED') {
+                        solvedBanner.classList.remove('opacity-100', 'translate-y-0');
+                        solvedBanner.classList.add('opacity-0', '-translate-y-4');
+                    }
+                }, 5000);
+            }
+
+            function hideSolvedCelebration() {
+                solvedBanner.classList.remove('opacity-100', 'translate-y-0');
+                solvedBanner.classList.add('opacity-0', '-translate-y-4');
+            }
+
+            const MIN_TPS = 0.1, MAX_TPS = 2500.0;
+            const sliderToTps = val => MIN_TPS * Math.pow(MAX_TPS / MIN_TPS, Math.max(0, Math.min(1, val / 1000)));
+            const tpsToSlider = tps => Math.round((Math.log(Math.max(MIN_TPS, Math.min(MAX_TPS, tps)) / MIN_TPS) / Math.log(MAX_TPS / MIN_TPS)) * 1000);
+
+            function setSpeedTPS(newTps) {
+                turnsPerSecond = Math.max(MIN_TPS, Math.min(MAX_TPS, parseFloat(newTps) || 3.0));
+                speedSlider.value = tpsToSlider(turnsPerSecond);
+                speedTpsInput.value = turnsPerSecond < 10 ? turnsPerSecond.toFixed(2) : Math.round(turnsPerSecond);
+                if (turnsPerSecond < 1.0) {
+                    speedModeBadge.textContent = `Slow-Mo (${turnsPerSecond.toFixed(2)}/dtk)`;
+                    speedModeBadge.className = 'text-[10px] mono font-semibold px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
+                } else if (turnsPerSecond <= 15.0) {
+                    speedModeBadge.textContent = `Animasi Halus (${turnsPerSecond.toFixed(1)}/dtk)`;
+                    speedModeBadge.className = 'text-[10px] mono font-semibold px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 border border-sky-500/30';
+                } else if (turnsPerSecond <= 150.0) {
+                    speedModeBadge.textContent = `Cepat (${Math.round(turnsPerSecond)}/dtk)`;
+                    speedModeBadge.className = 'text-[10px] mono font-semibold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30';
+                } else {
+                    speedModeBadge.textContent = `GPU Warp (${Math.round(turnsPerSecond)}/dtk)`;
+                    speedModeBadge.className = 'text-[10px] mono font-semibold px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40';
+                }
+                speedPresets.forEach(btn => {
+                    const p = parseFloat(btn.getAttribute('data-tps'));
+                    btn.className = Math.abs(p - turnsPerSecond) / p < 0.08
+                        ? 'speed-preset px-2 py-0.5 rounded-md text-[11px] mono bg-sky-500/30 text-sky-200 border border-sky-400 transition'
+                        : 'speed-preset px-2 py-0.5 rounded-md text-[11px] mono bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition';
+                });
+            }
+
+            speedSlider.addEventListener('input', e => setSpeedTPS(sliderToTps(parseFloat(e.target.value))));
+            speedTpsInput.addEventListener('change', e => setSpeedTPS(parseFloat(e.target.value)));
+            speedPresets.forEach(btn => btn.addEventListener('click', () => setSpeedTPS(parseFloat(btn.getAttribute('data-tps')))));
+            speedDecBtn.addEventListener('click', () => setSpeedTPS(turnsPerSecond - (turnsPerSecond <= 1 ? 0.1 : (turnsPerSecond <= 10 ? 0.5 : 5))));
+            speedIncBtn.addEventListener('click', () => setSpeedTPS(turnsPerSecond + (turnsPerSecond < 1 ? 0.1 : (turnsPerSecond < 10 ? 0.5 : 5))));
+            scrambleCountSlider.addEventListener('input', e => { scrambleCountInput.value = e.target.value; });
+            scrambleCountInput.addEventListener('change', e => {
+                const v = Math.max(1, Math.min(2000, parseInt(e.target.value, 10) || 25));
+                scrambleCountInput.value = v;
+                scrambleCountSlider.value = Math.min(500, v);
+            });
+
+            // ============================================================================
+            // MATHEMATICAL RUBIK SOLVERS (2x2 BFS, 3x3 KOCIEMBA, 4x4..400x400 ORBIT SOLVER)
+            // ============================================================================
+            function makeGeom(N) {
+                const NORM = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+                const fPos = (f, u, v) => { const x = u*2-1, y = v*2-1;
+                    return f===0?[1,y,-x]: f===1?[-1,y,x]: f===2?[x,1,-y]: f===3?[x,-1,y]: f===4?[x,y,1]:[-x,y,-1]; };
+                const rot = (p, a, d) => { const s = Math.sign(d);
+                    return a===0?[p[0],-s*p[2],s*p[1]]: a===1?[s*p[2],p[1],-s*p[0]]:[-s*p[1],s*p[0],p[2]]; };
+                const cl = v => Math.floor(Math.min(0.999999, Math.max(0, 0.5*(v+1))) * N);
+                const atlas = (p, n) => { const an = n.map(Math.abs); let f, c;
+                    if (an[0]>an[1] && an[0]>an[2]) { if (n[0]>0) { f=0; c=[-p[2],p[1]]; } else { f=1; c=[p[2],p[1]]; } }
+                    else if (an[1]>an[0] && an[1]>an[2]) { if (n[1]>0) { f=2; c=[p[0],-p[2]]; } else { f=3; c=[p[0],p[2]]; } }
+                    else { if (n[2]>0) { f=4; c=[p[0],p[1]]; } else { f=5; c=[-p[0],p[1]]; } }
+                    const row = Math.floor(f/4), col = f - row*4;
+                    return [col*N + cl(c[0]), row*N + cl(c[1])]; };
+                const st = [], idxOf = {};
+                for (let f = 0; f < 6; f++) { const row = Math.floor(f/4), col = f - row*4;
+                    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+                        const x = col*N+i, y = row*N+j; idxOf[x+','+y] = st.length;
+                        st.push({ f, x, y, i, j, pos: fPos(f, (i+.5)/N, (j+.5)/N) }); } }
+                function buildPerm(axis, dir, slice) { return st.map((s, d) => {
+                    if (Math.min(N-1, Math.floor((s.pos[axis]+1)*0.5*N)) !== slice) return d;
+                    const a = atlas(rot(s.pos, axis, -dir), rot(NORM[s.f], axis, -dir));
+                    return idxOf[a[0]+','+a[1]]; }); }
+                return { st, buildPerm };
+            }
+
+            const S2 = (function () {
+                const { st, buildPerm } = makeGeom(2);
+                const MV = [];
+                for (let a = 0; a < 3; a++) { const p = buildPerm(a,1,1), q = buildPerm(a,-1,1); MV.push(p, q, p.map(i => p[i])); }
+                const inv = m => Math.floor(m/3)*3 + [1,0,2][m%3];
+                const apply = (s, p) => { const o = new Uint8Array(24); for (let d = 0; d < 24; d++) o[d] = s[p[d]]; return o; };
+                const key = a => String.fromCharCode.apply(null, a);
+                function goalOf(s) { const c = {};
+                    st.forEach((q, i) => { if (q.pos.every(v => v < 0)) c[q.f] = s[i]; });
+                    const gf = [c[1]^1, c[1], c[3]^1, c[3], c[5]^1, c[5]];
+                    return Uint8Array.from(st.map(q => gf[q.f])); }
+                function solve(state) {
+                    const G = goalOf(state), kS = key(state), kG = key(G);
+                    if (kS === kG) return [];
+                    const F = new Map([[kS, null]]), B = new Map([[kG, null]]);
+                    let fr = [state], br = [G], meet = null;
+                    const expand = (list, M, O, back) => { const nx = [];
+                        for (const s of list) { const ks = key(s);
+                            for (let m = 0; m < 9; m++) { const t = apply(s, MV[m]), kt = key(t);
+                                if (M.has(kt)) continue;
+                                M.set(kt, { p: ks, m: back ? inv(m) : m }); nx.push(t);
+                                if (O.has(kt)) { meet = kt; return nx; } } }
+                        return nx; };
+                    for (let it = 0; it < 16 && meet === null; it++) {
+                        if (fr.length <= br.length) fr = expand(fr, F, B, false); else br = expand(br, B, F, true); }
+                    if (meet === null) return null;
+                    const a = [];
+                    for (let k = meet; F.get(k); k = F.get(k).p) a.push(F.get(k).m);
+                    a.reverse();
+                    for (let k = meet; B.get(k); k = B.get(k).p) a.push(B.get(k).m);
+                    return a; }
+                return { st, buildPerm, apply, solve, MV };
+            })();
+
+            const K3 = (function () {
+                const { st, buildPerm } = makeGeom(3);
+                const EPS = 0.01, grp = new Map(), cen = [];
+                st.forEach((s, i) => {
+                    if (s.pos.filter(v => Math.abs(v) < EPS).length === 2) { cen[s.f] = i; return; }
+                    const k = s.pos.map(v => Math.abs(v) < EPS ? 0 : Math.sign(v)).join(',');
+                    if (!grp.has(k)) grp.set(k, []);
+                    grp.get(k).push(i);
+                });
+                const keys = [...grp.keys()];
+                const cK = keys.filter(k => !k.includes('0')).sort();
+                const eK = keys.filter(k => k.includes('0')).sort((a, b) => ((a.split(',')[1] === '0') - (b.split(',')[1] === '0')) || (a < b ? -1 : 1));
+                const byF = l => { const m = {}; l.forEach(i => m[st[i].f] = i); return m; };
+                const C = cK.map(k => { const [sx, sy, sz] = k.split(',').map(Number), m = byF(grp.get(k));
+                    const y = m[sy > 0 ? 2 : 3], x = m[sx > 0 ? 0 : 1], z = m[sz > 0 ? 4 : 5];
+                    return sx * sy * sz > 0 ? [y, z, x] : [y, x, z]; });
+                const E = eK.map(k => { const v = k.split(',').map(Number), l = grp.get(k), m = byF(l);
+                    const first = v[1] !== 0 ? m[v[1] > 0 ? 2 : 3] : m[v[2] > 0 ? 4 : 5];
+                    return [first, l.find(i => i !== first)]; });
+                const fk = a => a.slice().sort().join();
+                const cHome = new Map(C.map((l, i) => [fk(l.map(j => st[j].f)), i]));
+                const eHome = new Map(E.map((l, i) => [fk(l.map(j => st[j].f)), i]));
+                const owner = new Map();
+                C.forEach((l, c) => l.forEach((s, j) => owner.set(s, [c, j])));
+                E.forEach((l, e) => l.forEach((s, j) => owner.set(s, [e, j])));
+                const isY = v => v === 2 || v === 3;
+                function toCubie(V) {
+                    const cp = [], co = [], ep = [], eo = [];
+                    C.forEach(l => { const v = l.map(i => V[i]); cp.push(cHome.get(fk(v))); co.push(v.findIndex(isY)); });
+                    E.forEach(l => { const v = l.map(i => V[i]); ep.push(eHome.get(fk(v)));
+                        eo.push(v.indexOf(v.some(isY) ? v.find(isY) : v.find(x => x === 4 || x === 5))); });
+                    return { cp, co, ep, eo };
+                }
+                function cubieMove(p) { const o = { cs: [], cd: [], es: [], ed: [] };
+                    C.forEach(l => { const [c2, k] = owner.get(p[l[0]]); o.cs.push(c2); o.cd.push((3 - k) % 3); });
+                    E.forEach(l => { const [e2, k] = owner.get(p[l[0]]); o.es.push(e2); o.ed.push(k); });
+                    return o; }
+                const applyC = (u, m) => ({
+                    cp: u.cp.map((_, c) => u.cp[m.cs[c]]), co: u.co.map((_, c) => (u.co[m.cs[c]] + m.cd[c]) % 3),
+                    ep: u.ep.map((_, e) => u.ep[m.es[e]]), eo: u.eo.map((_, e) => (u.eo[m.es[e]] + m.ed[e]) % 2) });
+                const encP = a => { const n = a.length; let r = 0;
+                    for (let i = 0; i < n; i++) { let c = 0; for (let j = i + 1; j < n; j++) if (a[j] < a[i]) c++; r = r * (n - i) + c; } return r; };
+                const decP = (r, n) => { const d = []; for (let i = n - 1; i >= 0; i--) { d[i] = r % (n - i); r = Math.floor(r / (n - i)); }
+                    const av = [...Array(n).keys()]; return d.map(x => av.splice(x, 1)[0]); };
+                const decT = t => { const co = []; let s = 0; for (let i = 6; i >= 0; i--) { co[i] = t % 3; t = Math.floor(t / 3); s += co[i]; } co[7] = (3 - s % 3) % 3; return co; };
+                const encT = co => { let t = 0; for (let i = 0; i < 7; i++) t = t * 3 + co[i]; return t; };
+                const decF = f => { const eo = []; let s = 0; for (let i = 10; i >= 0; i--) { eo[i] = f % 2; f >>= 1; s += eo[i]; } eo[11] = s % 2; return eo; };
+                const encF = eo => { let f = 0; for (let i = 0; i < 11; i++) f = f * 2 + eo[i]; return f; };
+                const pop = m => { let c = 0; while (m) { c += m & 1; m >>= 1; } return c; };
+                const masks = [0xF00]; for (let m = 0; m < 4096; m++) if (m !== 0xF00 && pop(m) === 4) masks.push(m);
+                const mrank = new Map(masks.map((m, i) => [m, i]));
+                const P2 = [6, 7, 8, 9, 10, 11, 2, 5, 14, 17];
+                const SP = [], MVc = [];
+                let T = null;
+                function build() {
+                    if (T) return T;
+                    for (let f = 0; f < 6; f++) { const ax = f >> 1, sl = (f & 1) ? 0 : 2;
+                        const p = buildPerm(ax, 1, sl), q = buildPerm(ax, -1, sl); SP.push(p, q, p.map(i => p[i])); }
+                    SP.forEach(p => MVc.push(cubieMove(p)));
+                    const mvT = new Uint16Array(2187 * 18), mvF = new Uint16Array(2048 * 18), mvS = new Uint16Array(495 * 18);
+                    for (let m = 0; m < 18; m++) { const { cs, cd, es, ed } = MVc[m];
+                        for (let t = 0; t < 2187; t++) { const co = decT(t); mvT[t*18+m] = encT(co.map((_, c) => (co[cs[c]] + cd[c]) % 3)); }
+                        for (let f = 0; f < 2048; f++) { const eo = decF(f); mvF[f*18+m] = encF(eo.map((_, e) => (eo[es[e]] + ed[e]) % 2)); }
+                        for (let r = 0; r < 495; r++) { let nm = 0; for (let c = 0; c < 12; c++) if ((masks[r] >> es[c]) & 1) nm |= 1 << c; mvS[r*18+m] = mrank.get(nm); } }
+                    const mvCP = new Uint16Array(40320 * 10), mvEP = new Uint16Array(40320 * 10), mvSL = new Uint8Array(24 * 10);
+                    for (let i = 0; i < 10; i++) { const { cs, es } = MVc[P2[i]];
+                        for (let a = 0; a < 40320; a++) { const x = decP(a, 8);
+                            mvCP[a*10+i] = encP(x.map((_, c) => x[cs[c]])); mvEP[a*10+i] = encP(x.map((_, c) => x[es[c]])); }
+                        for (let a = 0; a < 24; a++) { const x = decP(a, 4); mvSL[a*10+i] = encP(x.map((_, c) => x[es[c + 8] - 8])); } }
+                    const bfs = (s1, m1, s2, m2, nm) => { const P = new Uint8Array(s1 * s2).fill(255); P[0] = 0; let d = 0, cnt = 1;
+                        while (cnt > 0) { cnt = 0;
+                            for (let i = 0; i < P.length; i++) if (P[i] === d) { const a = (i / s2) | 0, b = i - a * s2;
+                                for (let m = 0; m < nm; m++) { const j = m1[a*nm+m] * s2 + m2[b*nm+m]; if (P[j] === 255) { P[j] = d + 1; cnt++; } } }
+                            d++; } return P; };
+                    T = { mvT, mvF, mvS, mvCP, mvEP, mvSL,
+                        pTS: bfs(2187, mvT, 495, mvS, 18), pFS: bfs(2048, mvF, 495, mvS, 18),
+                        pCP: bfs(40320, mvCP, 24, mvSL, 10), pEP: bfs(40320, mvEP, 24, mvSL, 10) };
+                    return T;
+                }
+                function tidy(sol) {
+                    const out = [];
+                    for (const m of sol) { const f = (m / 3) | 0, q = [1, 3, 2][m % 3], l = out[out.length - 1];
+                        if (l && l.f === f) l.q = (l.q + q) % 4; else out.push({ f, q }); }
+                    return out.filter(o => o.q).map(o => o.f * 3 + [0, 0, 2, 1][o.q]); }
+                function solve(colors, useFixedCenters = false, extraMs = 150) {
+                    const t = build(), home = [];
+                    if (useFixedCenters) { for (let f = 0; f < 6; f++) home[f] = f; }
+                    else { for (let f = 0; f < 6; f++) home[colors[cen[f]]] = f; }
+                    const cu = toCubie(colors.map(c => home[c]));
+                    if (cu.cp.some(v => v === undefined || v < 0) || cu.ep.some(v => v === undefined || v < 0)) return null;
+                    let best = null, until = Infinity; const path = [];
+                    const search2 = (a, b, c, dl, last, out) => {
+                        if (Math.max(t.pCP[a*24+c], t.pEP[b*24+c]) > dl) return false;
+                        if (dl === 0) return true;
+                        for (let i = 0; i < 10; i++) { const m = P2[i], f = (m / 3) | 0;
+                            if (last >= 0 && (f === last || ((f >> 1) === (last >> 1) && f < last))) continue;
+                            out.push(m);
+                            if (search2(t.mvCP[a*10+i], t.mvEP[b*10+i], t.mvSL[c*10+i], dl - 1, f, out)) return true;
+                            out.pop(); }
+                        return false; };
+                    const finish = last => {
+                        let u = cu; for (const m of path) u = applyC(u, MVc[m]);
+                        const a = encP(u.cp), b = encP(u.ep.slice(0, 8)), c = encP(u.ep.slice(8).map(v => v - 8));
+                        const h2 = Math.max(t.pCP[a*24+c], t.pEP[b*24+c]);
+                        const lim = Math.min(18, (best ? best.length - 1 : 99) - path.length);
+                        for (let d2 = h2; d2 <= lim; d2++) { const out = [];
+                            if (search2(a, b, c, d2, last, out)) { if (!best) until = Date.now() + extraMs; best = path.concat(out); return; } } };
+                    const search1 = (a, b, s, dl, last) => {
+                        if (best && Date.now() > until) return;
+                        if (Math.max(t.pTS[a*495+s], t.pFS[b*495+s]) > dl) return;
+                        if (dl === 0) { finish(last); return; }
+                        for (let m = 0; m < 18; m++) { const f = (m / 3) | 0;
+                            if (last >= 0 && (f === last || ((f >> 1) === (last >> 1) && f < last))) continue;
+                            path.push(m); search1(t.mvT[a*18+m], t.mvF[b*18+m], t.mvS[s*18+m], dl - 1, f); path.pop(); } };
+                    const a0 = encT(cu.co), b0 = encF(cu.eo);
+                    let m0 = 0; cu.ep.forEach((pc, pos) => { if (pc >= 8) m0 |= 1 << pos; });
+                    const s0 = mrank.get(m0);
+                    if (s0 === undefined) return null;
+                    for (let d1 = 0; d1 <= 22; d1++) {
+                        if (best && (d1 >= best.length || Date.now() > until)) break;
+                        search1(a0, b0, s0, d1, -1); }
+                    return best && tidy(best); }
+                return { st, solve, prep: build, SP };
+            })();
+
+            function readGPUState(N, st) {
+                const W = 4 * N, buf = new Uint8Array(W * 2 * N * 4);
+                renderer.readRenderTargetPixels(currentFbo, 0, 0, W, 2 * N, buf);
+                const pal = [[242,41,51],[255,122,10],[247,250,255],[250,217,15],[13,204,92],[26,117,250]];
+                return Uint8Array.from(st.map(q => { const o = (q.y*W + q.x) * 4; let best = 0, bd = 1e9;
+                    pal.forEach((p, k) => { const d = (p[0]-buf[o])**2 + (p[1]-buf[o+1])**2 + (p[2]-buf[o+2])**2;
+                        if (d < bd) { bd = d; best = k; } });
+                    return best; }));
+            }
+
+            function readFullCubeGridFromGPU(N) {
+                const W = 4 * N, H = 2 * N;
+                const buf = new Uint8Array(W * H * 4);
+                renderer.readRenderTargetPixels(currentFbo, 0, 0, W, H, buf);
+                const pal = [[242,41,51],[255,122,10],[247,250,255],[250,217,15],[13,204,92],[26,117,250]];
+                const grid = new Uint8Array(6 * N * N);
+                for (let f = 0; f < 6; f++) {
+                    const row = (f / 4) | 0, col = f - row * 4, fOffset = f * N * N;
+                    for (let j = 0; j < N; j++) {
+                        const texY = row * N + j;
+                        for (let i = 0; i < N; i++) {
+                            const o = (texY * W + col * N + i) * 4;
+                            let best = 0, bd = 1e9;
+                            for (let k = 0; k < 6; k++) {
+                                const p = pal[k], d = (p[0] - buf[o]) ** 2 + (p[1] - buf[o + 1]) ** 2 + (p[2] - buf[o + 2]) ** 2;
+                                if (d < bd) { bd = d; best = k; }
+                            }
+                            grid[fOffset + j * N + i] = best;
+                        }
+                    }
+                }
+                return grid;
+            }
+
+            // Cek keadaan selesai dari piksel GPU: setiap sisi harus satu warna
+            function isCubeSolvedOnGPU(N) {
+                const g = readFullCubeGridFromGPU(N), NN = N * N;
+                for (let f = 0; f < 6; f++) {
+                    const c0 = g[f * NN];
+                    for (let k = 1; k < NN; k++) if (g[f * NN + k] !== c0) return false;
+                }
+                return true;
+            }
+
+            // Orbit Sticker Builder (24-sticker chiral orbit per coordinate pair)
+            function buildOrbitStickers(N, baseI, baseJ) { return buildStickerSet(N, [[baseI, baseJ]]); }
+            function buildStickerSet(N, bases) {
+                const NORM = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+                const fPos = (f, u, v) => { const x = u*2-1, y = v*2-1;
+                    return f===0?[1,y,-x]: f===1?[-1,y,x]: f===2?[x,1,-y]: f===3?[x,-1,y]: f===4?[x,y,1]:[-x,y,-1]; };
+                const rot = (p, a, d) => { const s = Math.sign(d);
+                    return a===0?[p[0],-s*p[2],s*p[1]]: a===1?[s*p[2],p[1],-s*p[0]]:[-s*p[1],s*p[0],p[2]]; };
+                const cl = v => Math.floor(Math.min(0.999999, Math.max(0, 0.5*(v+1))) * N);
+                const toFaceIJ = (p, n) => { const an = n.map(Math.abs); let f, c;
+                    if (an[0]>an[1] && an[0]>an[2]) { if (n[0]>0) { f=0; c=[-p[2],p[1]]; } else { f=1; c=[p[2],p[1]]; } }
+                    else if (an[1]>an[0] && an[1]>an[2]) { if (n[1]>0) { f=2; c=[p[0],-p[2]]; } else { f=3; c=[p[0],p[2]]; } }
+                    else { if (n[2]>0) { f=4; c=[p[0],p[1]]; } else { f=5; c=[-p[0],p[1]]; } }
+                    return { f, i: cl(c[0]), j: cl(c[1]) };
+                };
+
+                const coordsOnFace = [];
+                for (const [bI, bJ] of bases) {
+                    let curI = bI, curJ = bJ;
+                    for (let r = 0; r < 4; r++) {
+                        coordsOnFace.push([curI, curJ]);
+                        const nextI = N - 1 - curJ, nextJ = curI;
+                        curI = nextI; curJ = nextJ;
+                    }
+                }
+
+                const orbitList = [], keyToIdx = new Map();
+                for (let f = 0; f < 6; f++) {
+                    for (const [i, j] of coordsOnFace) {
+                        const pos = fPos(f, (i + 0.5) / N, (j + 0.5) / N);
+                        keyToIdx.set(`${f},${i},${j}`, orbitList.length);
+                        orbitList.push({ f, i, j, pos });
+                    }
+                }
+
+                function getMovePerm(axis, slice, dir) {
+                    const M = orbitList.length, perm = new Uint8Array(M);
+                    for (let d = 0; d < M; d++) {
+                        const s = orbitList[d];
+                        const sl = Math.min(N - 1, Math.floor((s.pos[axis] + 1) * 0.5 * N));
+                        if (sl !== slice) perm[d] = d;
+                        else {
+                            const src = toFaceIJ(rot(s.pos, axis, -dir), rot(NORM[s.f], axis, -dir));
+                            perm[d] = keyToIdx.get(`${src.f},${src.i},${src.j}`);
+                        }
+                    }
+                    return perm;
+                }
+                return { orbitList, getMovePerm, perFace: coordsOnFace.length };
+            }
+
+            const applyPerm = (s, p) => { const o = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) o[i] = s[p[i]]; return o; };
+            const composePerm = (p1, p2) => { const o = new Uint8Array(p1.length); for (let i = 0; i < p1.length; i++) o[i] = p1[p2[i]]; return o; };
+
+            // Prebuild canonical Wing & Niklas Center Libraries once
+            const wingRef = buildStickerSet(4, [[1, 0], [2, 0]]);
+            const wingPermCache = new Map();
+            const wingRefPerm = (ax, sl, dir) => { const k = ax * 100 + sl * 10 + (dir > 0 ? 1 : 0); let p = wingPermCache.get(k); if (!p) { p = wingRef.getMovePerm(ax, sl, dir); wingPermCache.set(k, p); } return p; };
+            const wingMacros = [];
+            for (let ax = 0; ax < 3; ax++) {
+                for (let side = 0; side < 2; side++) {
+                    const refSlice = side === 0 ? 1 : 2;
+                    for (const dir of [1, -1]) {
+                        wingMacros.push({ perm: wingRef.getMovePerm(ax, refSlice, dir), steps: [{ isInner: true, axis: ax, side, dir }] });
+                    }
+                }
+            }
+            for (let bAx = 0; bAx < 3; bAx++) {
+                for (const bSide of [0, 1]) {
+                    const bRefSlice = bSide === 0 ? 0 : 3;
+                    for (const bDir of [1, -1]) {
+                        const pB = wingRef.getMovePerm(bAx, bRefSlice, bDir), pBInv = wingRef.getMovePerm(bAx, bRefSlice, -bDir);
+                        for (let aAx = 0; aAx < 3; aAx++) {
+                            if (aAx === bAx) continue;
+                            for (let aSide = 0; aSide < 2; aSide++) {
+                                const aRefSlice = aSide === 0 ? 1 : 2;
+                                for (const aDir of [1, -1]) {
+                                    const pA = wingRef.getMovePerm(aAx, aRefSlice, aDir);
+                                    wingMacros.push({
+                                        perm: composePerm(composePerm(pB, pA), pBInv),
+                                        steps: [
+                                            { isInner: false, axis: bAx, side: bSide, dir: bDir },
+                                            { isInner: true,  axis: aAx, side: aSide, dir: aDir },
+                                            { isInner: false, axis: bAx, side: bSide, dir: -bDir }
+                                        ]
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Library wing: makro 4-siklus unik + semua 3-siklus wing (komutator + konjugasi)
+            let _wingTable = null;
+            function getWingTable() {
+                if (_wingTable) return _wingTable;
+                const inv = p => { const q = new Uint8Array(p.length); for (let i = 0; i < p.length; i++) q[p[i]] = i; return q; };
+                const comp = (x, y) => { const o = new Uint8Array(x.length); for (let i = 0; i < x.length; i++) o[i] = x[y[i]]; return o; };
+                const uniq = new Map();
+                for (const m of wingMacros) {
+                    const k = m.perm.join(',');
+                    if (!uniq.has(k) || uniq.get(k).steps.length > m.steps.length) uniq.set(k, m);
+                }
+                const macros = [...uniq.values()];
+                const minv = macros.map(m => inv(m.perm));
+                const invIdx = minv.map(q => { const k = q.join(','); return macros.findIndex(m => m.perm.join(',') === k); });
+                const goal = Uint8Array.from(wingRef.orbitList.map(o => o.f));
+                const wid = wingRef.orbitList.map(o => o.pos.map(v => Math.min(3, Math.floor((v + 1) * 2))).join(','));
+                const wingIds = [...new Set(wid)];
+                const sw = wid.map(k => wingIds.indexOf(k));
+                const movedWings = c => { const m = new Set(); for (let k = 0; k < c.length; k++) if (c[k] !== k) m.add(sw[k]); return m; };
+                const lib = new Map();
+                for (let i = 0; i < macros.length; i++) for (let j = 0; j < macros.length; j++) {
+                    const A = macros[i].perm, B = macros[j].perm;
+                    const c = comp(comp(comp(A, B), minv[i]), minv[j]);
+                    if (movedWings(c).size === 3) { const k = c.join(','); if (!lib.has(k)) lib.set(k, { perm: c, word: [i, j, invIdx[i], invIdx[j]] }); }
+                }
+                for (let round = 0; round < 2; round++) {
+                    for (const e of [...lib.values()]) for (let m = 0; m < macros.length; m++) {
+                        const c = comp(comp(macros[m].perm, e.perm), minv[m]);
+                        const k = c.join(',');
+                        if (!lib.has(k)) lib.set(k, { perm: c, word: [m, ...e.word, invIdx[m]] });
+                    }
+                }
+                const L = [...lib.values()];
+                L.forEach(e => { e.wings = movedWings(e.perm); e.moved = []; for (let x = 0; x < e.perm.length; x++) if (e.perm[x] !== x) e.moved.push(x); });
+                _wingTable = { macros, goal, sw, L };
+                return _wingTable;
+            }
+
+            function buildNiklasLibraryForCenterRef(N_ref, baseI, baseJ) {
+                const ref = buildOrbitStickers(N_ref, baseI, baseJ), macros = [];
+                for (let ax = 0; ax < 3; ax++) {
+                    const slicesI = [{ refSl: baseI, which: 'I', side: 0 }, { refSl: N_ref - 1 - baseI, which: 'I', side: 1 }];
+                    const slicesJ = (baseJ === N_ref - 1 - baseJ)
+                        ? [{ refSl: baseJ, which: 'J', side: 0 }]
+                        : [{ refSl: baseJ, which: 'J', side: 0 }, { refSl: N_ref - 1 - baseJ, which: 'J', side: 1 }];
+                    const allInner = [...slicesI, ...slicesJ];
+                    for (const sA of allInner) {
+                        for (const sB of allInner) {
+                            if (sA.refSl === sB.refSl) continue;
+                            for (let fAx = 0; fAx < 3; fAx++) {
+                                if (fAx === ax) continue;
+                                for (const fSide of [0, 1]) {
+                                    const fRefSl = fSide === 0 ? 0 : (N_ref - 1);
+                                    for (const fDir of [1, -1]) {
+                                        const pF = ref.getMovePerm(fAx, fRefSl, fDir), pFInv = ref.getMovePerm(fAx, fRefSl, -fDir);
+                                        const pA = ref.getMovePerm(ax, sA.refSl, 1), pAInv = ref.getMovePerm(ax, sA.refSl, -1);
+                                        const pB = ref.getMovePerm(ax, sB.refSl, 1), pBInv = ref.getMovePerm(ax, sB.refSl, -1);
+                                        let pNik = composePerm(pA, pF);
+                                        pNik = composePerm(pNik, pB);
+                                        pNik = composePerm(pNik, pFInv);
+                                        pNik = composePerm(pNik, pAInv);
+                                        pNik = composePerm(pNik, pF);
+                                        pNik = composePerm(pNik, pBInv);
+                                        pNik = composePerm(pNik, pFInv);
+                                        let moved = 0;
+                                        for (let u = 0; u < 24; u++) if (pNik[u] !== u) moved++;
+                                        if (moved === 3) macros.push({ perm: pNik, ax, sA, sB, fAx, fSide, fDir });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // Perluas: konjugasi dengan semua langkah yang menyentuh orbit ini -> hampir semua 3-siklus
+                const inv = pp => { const q = new Uint8Array(pp.length); for (let x = 0; x < pp.length; x++) q[pp[x]] = x; return q; };
+                const rI = baseI, rJ = baseJ;
+                const gens = [], slSet = [...new Set([0, N_ref - 1, rI, N_ref - 1 - rI, rJ, N_ref - 1 - rJ])];
+                for (let a = 0; a < 3; a++) for (const sl of slSet) for (const d of [1, -1]) {
+                    const pp = ref.getMovePerm(a, sl, d);
+                    gens.push({ perm: pp, pinv: inv(pp), step: { axis: a, refSl: sl, dir: d }, back: { axis: a, refSl: sl, dir: -d } });
+                }
+                const table = new Map();
+                for (const m of macros) {
+                    const k = m.perm.join(',');
+                    if (table.has(k)) continue;
+                    const sA = m.sA.refSl, sB = m.sB.refSl, fSl = m.fSide === 0 ? 0 : N_ref - 1;
+                    table.set(k, { perm: m.perm, steps: [
+                        { axis: m.ax, refSl: sA, dir: 1 }, { axis: m.fAx, refSl: fSl, dir: m.fDir },
+                        { axis: m.ax, refSl: sB, dir: 1 }, { axis: m.fAx, refSl: fSl, dir: -m.fDir },
+                        { axis: m.ax, refSl: sA, dir: -1 }, { axis: m.fAx, refSl: fSl, dir: m.fDir },
+                        { axis: m.ax, refSl: sB, dir: -1 }, { axis: m.fAx, refSl: fSl, dir: -m.fDir } ] });
+                }
+                for (let round = 0; round < 4; round++) {
+                    for (const e of [...table.values()]) for (const g of gens) {
+                        const c = composePerm(composePerm(g.perm, e.perm), g.pinv), k = c.join(',');
+                        if (!table.has(k)) table.set(k, { perm: c, steps: [g.step, ...e.steps, g.back] });
+                    }
+                }
+                const entries = [...table.values()];
+                entries.forEach(e => { e.moved = []; for (let x = 0; x < e.perm.length; x++) if (e.perm[x] !== x) e.moved.push(x); });
+                return { ref, macros, entries };
+            }
+
+            const niklasDiag  = buildNiklasLibraryForCenterRef(4, 1, 1);
+            const niklasObliq = buildNiklasLibraryForCenterRef(6, 1, 2);
+            const niklasCross = buildNiklasLibraryForCenterRef(5, 1, 2);
+
+            // True State-Driven Solver for N >= 4
+            async function solveCubeFromGPUPixels(N, onProgress) {
+                const grid = readFullCubeGridFromGPU(N);
+                const formulaMoves = [], globalOuterMoves = [];
+                const half = Math.floor(N / 2);
+                // Warna target tiap sisi: N ganjil -> warna pusat tetap (K3 menyelesaikan relatif ke pusat), N genap -> indeks sisi
+                const faceGoal = (N % 2 === 1) ? Array.from({ length: 6 }, (_, f) => grid[f * N * N + half * N + half]) : [0, 1, 2, 3, 4, 5];
+
+                onProgress(5, 'Fase 1: Menyelesaikan Kerangka Sudut & Luar...', 0);
+                await new Promise(r => setTimeout(r, 10));
+
+                if (N % 2 === 1) {
+                    const mid = half, mapCoord = [0, mid, N - 1];
+                    const state3 = Uint8Array.from(K3.st.map(q => grid[q.f * N * N + mapCoord[q.j] * N + mapCoord[q.i]]));
+                    K3.prep();
+                    const sol3 = K3.solve(state3, false) || [];
+                    for (let idx = 0; idx < sol3.length; idx++) {
+                        const m = sol3[idx], fc = (m / 3) | 0, k = m % 3;
+                        const axis = fc >> 1, sl = (fc & 1) ? 0 : (N - 1), reps = (k === 2) ? 2 : 1, dir = (k === 1) ? -1 : 1;
+                        for (let r = 0; r < reps; r++) {
+                            const moveObj = { axis, sliceStart: sl, sliceEnd: sl, dir, isSolvingMove: true, phaseName: 'Fase 1: Kerangka 3×3 (Kociemba)', formulaTag: `Kociemba (${idx + 1}/${sol3.length})` };
+                            formulaMoves.push(moveObj);
+                            globalOuterMoves.push(moveObj);
+                        }
+                    }
+                } else {
+                    const { orbitList: cornerOrbit, getMovePerm: getCornerPerm } = buildOrbitStickers(N, 0, 0);
+                    const curCornerState = Uint8Array.from(cornerOrbit.map(o => grid[o.f * N * N + o.j * N + o.i]));
+                    const outerDefs = [];
+                    for (let axis = 0; axis < 3; axis++) {
+                        for (const slice of [0, N - 1]) {
+                            for (const dir of [1, -1]) {
+                                outerDefs.push({ axis, sliceStart: slice, sliceEnd: slice, dir, perm: getCornerPerm(axis, slice, dir) });
+                            }
+                        }
+                    }
+                    const goalCornerState = Uint8Array.from(cornerOrbit.map(o => o.f));
+                    const key = a => String.fromCharCode.apply(null, a);
+                    const kS = key(curCornerState), kG = key(goalCornerState);
+                    if (kS !== kG) {
+                        const F = new Map([[kS, null]]), B = new Map([[kG, null]]);
+                        let fr = [curCornerState], br = [goalCornerState], meet = null;
+                        const expand = (list, M, O, back) => {
+                            const nx = [];
+                            for (const s of list) {
+                                const ks = key(s);
+                                for (let m = 0; m < outerDefs.length; m++) {
+                                    const t = applyPerm(s, outerDefs[m].perm), kt = key(t);
+                                    if (M.has(kt)) continue;
+                                    M.set(kt, { p: ks, m: back ? (m ^ 1) : m });
+                                    nx.push(t);
+                                    if (O.has(kt)) { meet = kt; return nx; }
+                                }
+                            }
+                            return nx;
+                        };
+                        for (let it = 0; it < 14 && meet === null; it++) {
+                            if (fr.length <= br.length) fr = expand(fr, F, B, false);
+                            else br = expand(br, B, F, true);
+                        }
+                        if (meet !== null) {
+                            const path = [];
+                            for (let k = meet; F.get(k); k = F.get(k).p) path.push(F.get(k).m);
+                            path.reverse();
+                            for (let k = meet; B.get(k); k = B.get(k).p) path.push(B.get(k).m);
+                            for (const m of path) {
+                                const mv = outerDefs[m];
+                                const moveObj = { axis: mv.axis, sliceStart: mv.sliceStart, sliceEnd: mv.sliceEnd, dir: mv.dir, isSolvingMove: true, phaseName: 'Fase 1: Kerangka Sudut BFS', formulaTag: `Sudut: ${moveToNotation(mv, N)}` };
+                                formulaMoves.push(moveObj);
+                                globalOuterMoves.push(moveObj);
+                            }
+                        }
+                    }
+                }
+
+                // Phase 2: Solve Wing-Edge Orbits
+                function solveWingOrbitState(curState) {
+                    const WM = getWingTable(), n = curState.length, goal = WM.goal.map(f => faceGoal[f]), M = WM.macros, L = WM.L;
+                    const cnt = st => { let c = 0; for (let i = 0; i < n; i++) if (st[i] === goal[i]) c++; return c; };
+                    const score = (st, p) => { let c = 0; for (let i = 0; i < n; i++) if (st[p[i]] === goal[i]) c++; return c; };
+
+                    function stallFix(st, cur) {
+                        const U = new Set();
+                        for (let i = 0; i < n; i++) if (st[i] !== goal[i]) U.add(WM.sw[i]);
+                        const opts = [];
+                        L.forEach((e, k) => { for (const w of e.wings) if (!U.has(w)) return; opts.push({ perm: e.perm, kind: 'c', idx: k }); });
+                        M.forEach((m, k) => opts.push({ perm: m.perm, kind: 'm', idx: k }));
+                        const O = opts.length;
+                        for (let a1 = 0; a1 < O; a1++) if (score(st, opts[a1].perm) > cur) return [opts[a1]];
+                        for (let a1 = 0; a1 < O; a1++) {
+                            const s1 = applyPerm(st, opts[a1].perm);
+                            for (let b1 = 0; b1 < O; b1++) if (score(s1, opts[b1].perm) > cur) return [opts[a1], opts[b1]];
+                        }
+                        if (O <= 170) {
+                            for (let a1 = 0; a1 < O; a1++) {
+                                const s1 = applyPerm(st, opts[a1].perm);
+                                for (let b1 = 0; b1 < O; b1++) {
+                                    const s2 = applyPerm(s1, opts[b1].perm);
+                                    for (let c1 = 0; c1 < O; c1++) if (score(s2, opts[c1].perm) > cur) return [opts[a1], opts[b1], opts[c1]];
+                                }
+                            }
+                        }
+                        return null;
+                    }
+                    function solveEven(start) {
+                        const out = []; let st = start;
+                        for (let it = 0; it < 80; it++) {
+                            const cur = cnt(st);
+                            if (cur === n) return out;
+                            let best = 0, bi = -1;
+                            for (let k = 0; k < L.length; k++) {
+                                const e = L[k], mv = e.moved; let d = 0;
+                                for (let q = 0; q < mv.length; q++) { const x = mv[q]; d += (st[e.perm[x]] === goal[x] ? 1 : 0) - (st[x] === goal[x] ? 1 : 0); }
+                                if (d > best) { best = d; bi = k; }
+                            }
+                            if (bi >= 0) { out.push({ kind: 'c', idx: bi }); st = applyPerm(st, L[bi].perm); continue; }
+                            const fx = stallFix(st, cur);
+                            if (!fx) return null;
+                            for (const o of fx) { out.push({ kind: o.kind, idx: o.idx }); st = applyPerm(st, o.perm); }
+                        }
+                        return null;
+                    }
+                    let plan = solveEven(curState);
+                    if (!plan) {
+                        for (let m = 0; m < M.length && !plan; m++) {      // koreksi paritas (makro 4-siklus)
+                            const r = solveEven(applyPerm(curState, M[m].perm));
+                            if (r) plan = [{ kind: 'm', idx: m }, ...r];
+                        }
+                    }
+                    if (!plan) return null;
+                    return plan.map(o => o.kind === 'm'
+                        ? M[o.idx]
+                        : { steps: L[o.idx].word.flatMap(mi => M[mi].steps) });
+                }
+
+                const innerWingMovesByDepth = new Map();
+                for (let k = 1; k < half; k++) {
+                    if (cancelComputeRequested) return [];
+                    const wSet = buildStickerSet(N, [[k, 0], [N - 1 - k, 0]]);
+                    let wState = Uint8Array.from(wSet.orbitList.map(o => grid[o.f * N * N + o.j * N + o.i]));
+                    for (const mv of globalOuterMoves) {
+                        wState = applyPerm(wState, wingRefPerm(mv.axis, mv.sliceStart === 0 ? 0 : 3, mv.dir));
+                    }
+                    let alreadySolved = true;
+                    for (let i = 0; i < wState.length; i++) if (wState[i] !== faceGoal[wingRef.orbitList[i].f]) { alreadySolved = false; break; }
+
+                    if (!alreadySolved) {
+                        const macros = solveWingOrbitState(wState) || [];
+                        const depthMoves = [];
+                        for (const mac of macros) {
+                            for (const stp of mac.steps) {
+                                const actualSlice = stp.isInner ? (stp.side === 0 ? k : (N - 1 - k)) : (stp.side === 0 ? 0 : (N - 1));
+                                const moveObj = {
+                                    axis: stp.axis, sliceStart: actualSlice, sliceEnd: actualSlice, dir: stp.dir,
+                                    isSolvingMove: true,
+                                    phaseName: `Fase 2: Rumus Wing-Edge Pairing (Orbit ${k})`,
+                                    formulaTag: `Wing-Pair [${k}]`
+                                };
+                                formulaMoves.push(moveObj);
+                                depthMoves.push(moveObj);
+                            }
+                        }
+                        innerWingMovesByDepth.set(k, depthMoves);
+                    }
+                    if (k % 5 === 0) {
+                        onProgress(10 + Math.round((k / Math.max(1, half)) * 30), `Fase 2: Wing-Edge Pairing (${k}/${half - 1})`, formulaMoves.length);
+                        await new Promise(r => setTimeout(r, 0));
+                    }
+                }
+
+                // Phase 3: Solve Center Orbits (i, j) via Pure 3-Cycle Niklas Commutators
+                function solveCenter24WithNiklas(startState, lib) {
+                    const goal = Uint8Array.from(lib.ref.orbitList.map(o => faceGoal[o.f])), E = lib.entries, n = 24;
+                    const cnt = st => { let c = 0; for (let x = 0; x < n; x++) if (st[x] === goal[x]) c++; return c; };
+                    const score = (st, pp) => { let c = 0; for (let x = 0; x < n; x++) if (st[pp[x]] === goal[x]) c++; return c; };
+                    const chosen = [];
+                    let state = startState.slice();
+                    for (let step = 0; step < 120; step++) {
+                        const cur = cnt(state);
+                        if (cur === n) return chosen;
+                        let best = 0, bi = -1;
+                        for (let k = 0; k < E.length; k++) {
+                            const e = E[k], mv = e.moved; let d = 0;
+                            for (let q = 0; q < mv.length; q++) { const x = mv[q]; d += (state[e.perm[x]] === goal[x] ? 1 : 0) - (state[x] === goal[x] ? 1 : 0); }
+                            if (d > best) { best = d; bi = k; }
+                        }
+                        if (bi >= 0) { chosen.push(E[bi]); state = applyPerm(state, E[bi].perm); continue; }
+                        // buntu: cari 2-3 siklus yang hanya menyentuh stiker salah
+                        const bad = new Set(); for (let x = 0; x < n; x++) if (state[x] !== goal[x]) bad.add(x);
+                        const opts = E.filter(e => e.moved.every(x => bad.has(x)));
+                        let seq = null;
+                        for (let a1 = 0; a1 < opts.length && !seq; a1++) {
+                            const s1 = applyPerm(state, opts[a1].perm);
+                            for (let b1 = 0; b1 < opts.length; b1++) if (score(s1, opts[b1].perm) > cur) { seq = [opts[a1], opts[b1]]; break; }
+                        }
+                        if (!seq && opts.length <= 200) {
+                            for (let a1 = 0; a1 < opts.length && !seq; a1++) {
+                                const s1 = applyPerm(state, opts[a1].perm);
+                                for (let b1 = 0; b1 < opts.length && !seq; b1++) {
+                                    const s2 = applyPerm(s1, opts[b1].perm);
+                                    for (let c1 = 0; c1 < opts.length; c1++) if (score(s2, opts[c1].perm) > cur) { seq = [opts[a1], opts[b1], opts[c1]]; break; }
+                                }
+                            }
+                        }
+                        if (!seq) return null;
+                        for (const e of seq) { chosen.push(e); state = applyPerm(state, e.perm); }
+                    }
+                    return null;
+                }
+
+                const centerOrbitsToSolve = [];
+                for (let i = 1; i < half; i++) {
+                    for (let j = 1; j < half; j++) centerOrbitsToSolve.push({ i, j, type: (i === j) ? 'diag' : 'obliq' });
+                    if (N % 2 === 1) centerOrbitsToSolve.push({ i, j: half, type: 'cross' });
+                }
+
+                function applyMoveToCenterState(cState, mv, N, i, j, lib, N_ref, refI, refJ) {
+                    const s = mv.sliceStart;
+                    let refSl = -1;
+                    if (s === 0) refSl = 0;
+                    else if (s === N - 1) refSl = N_ref - 1;
+                    else if (s === i) refSl = refI;
+                    else if (s === N - 1 - i) refSl = N_ref - 1 - refI;
+                    else if (s === j) refSl = refJ;
+                    else if (s === N - 1 - j) refSl = N_ref - 1 - refJ;
+                    return refSl < 0 ? cState : applyPerm(cState, lib.ref.getMovePerm(mv.axis, refSl, mv.dir));
+                }
+
+                const totalCenterOrbits = centerOrbitsToSolve.length;
+                for (let cIdx = 0; cIdx < totalCenterOrbits; cIdx++) {
+                    if (cancelComputeRequested) return [];
+                    const { i, j, type } = centerOrbitsToSolve[cIdx];
+                    const lib = (type === 'diag') ? niklasDiag : ((type === 'cross') ? niklasCross : niklasObliq);
+                    const N_ref = (type === 'diag') ? 4 : ((type === 'cross') ? 5 : 6);
+                    const refI = 1, refJ = (type === 'diag') ? 1 : 2;
+                    const coordsOnFace = [[i, j], [N - 1 - j, i], [N - 1 - i, N - 1 - j], [j, N - 1 - i]];
+
+                    let cState = new Uint8Array(24);
+                    for (let f = 0; f < 6; f++) {
+                        for (let c = 0; c < 4; c++) {
+                            const [ci, cj] = coordsOnFace[c];
+                            cState[f * 4 + c] = grid[f * N * N + cj * N + ci];
+                        }
+                    }
+
+                    // Apply Phase 1 outer moves + only the relevant Wing Orbit moves for depths `i` and `j`
+                    for (const mv of globalOuterMoves) cState = applyMoveToCenterState(cState, mv, N, i, j, lib, N_ref, refI, refJ);
+                    for (const kk of [...new Set([i, j])].sort((x, y) => x - y)) {
+                        if (innerWingMovesByDepth.has(kk)) {
+                            for (const mv of innerWingMovesByDepth.get(kk)) cState = applyMoveToCenterState(cState, mv, N, i, j, lib, N_ref, refI, refJ);
+                        }
+                    }
+
+                    let solved = true;
+                    for (let u = 0; u < 24; u++) if (cState[u] !== faceGoal[lib.ref.orbitList[u].f]) { solved = false; break; }
+
+                    if (!solved) {
+                        const niklasSeq = solveCenter24WithNiklas(cState, lib) || [];
+                        const mapSl = r => r === 0 ? 0 : r === N_ref - 1 ? N - 1 : r === refI ? i : r === N_ref - 1 - refI ? N - 1 - i : r === refJ ? j : N - 1 - j;
+                        const phaseName = `Fase 3: Komutator Pusat Niklas (${i},${j})`;
+                        const tag = `Niklas [${i},${j}]`;
+                        for (const ent of niklasSeq) {
+                            for (const stp of ent.steps) {
+                                const sl = mapSl(stp.refSl);
+                                formulaMoves.push({ axis: stp.axis, sliceStart: sl, sliceEnd: sl, dir: stp.dir, isSolvingMove: true, phaseName, formulaTag: tag });
+                            }
+                        }
+                    }
+
+                    if (cIdx % 150 === 0 && totalCenterOrbits > 50) {
+                        onProgress(40 + Math.round(((cIdx + 1) / totalCenterOrbits) * 58), `Fase 3: Komutator Pusat Niklas (${cIdx + 1}/${totalCenterOrbits})`, formulaMoves.length);
+                        await new Promise(r => setTimeout(r, 0));
+                    }
+                }
+
+                onProgress(100, 'Seluruh Rumus Selesai Disusun!', formulaMoves.length);
+                return formulaMoves;
+            }
+
+            let recentNotations = [];
+            function logMoveFormulaToHUD(mv) {
+                if (!mv) return;
+                recentNotations.push(moveToNotation(mv, cubeSize));
+                if (recentNotations.length > 24) recentNotations.shift();
+                if (mv.phaseName) activePhaseBadge.textContent = mv.phaseName;
+                const prefix = mv.formulaTag ? `<span class="text-amber-300 font-semibold">[${mv.formulaTag}]</span> ` : '';
+                formulaStreamBox.innerHTML = `${prefix}<span class="text-sky-300">${recentNotations.slice(-16).join(' ')}</span>`;
+            }
+
+            function setCubeSize(newSize) {
+                const clamped = Math.max(2, Math.min(400, parseInt(newSize, 10) || 3));
+                cubeSize = clamped;
+                sizeSlider.value = sizeInput.value = clamped;
+                sizeBadge.textContent = `× ${clamped}`;
+                if (mobSizeIndicator) mobSizeIndicator.textContent = `${clamped}×${clamped}`;
+
+                const suggestedScramble = clamped <= 5 ? 25 : (clamped <= 30 ? 40 : (clamped <= 100 ? 60 : 100));
+                scrambleCountInput.value = suggestedScramble;
+                scrambleCountSlider.value = Math.min(500, suggestedScramble);
+
+                presetBtns.forEach(btn => {
+                    const bSize = parseInt(btn.getAttribute('data-size'), 10);
+                    btn.className = bSize === clamped
+                        ? 'preset-btn py-1.5 rounded-lg text-xs mono font-semibold bg-sky-500/25 text-sky-300 border border-sky-400/60 transition'
+                        : 'preset-btn py-1.5 rounded-lg text-xs mono font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/70 transition';
+                });
+
+                moveQueue = []; scrambleCounter = 0; recentNotations = []; activeMove = null; isPaused = false;
+                btnPause.textContent = '⏸ Jeda';
+                hideSolvedCelebration();
+                createPingPongFBOs(clamped);
+                setTimeout(() => K3.prep(), 200);
+                formulaStreamBox.textContent = `Rubik ${clamped}×${clamped} siap. Klik "Acak Rubik" lalu "Selesaikan (Rumus)".`;
+                updateStatusUI('SOLVED');
+            }
+
+            function startAnimatedScramble() {
+                if (isComputingFormula) return;
+                if (autoLoopTimer) { clearTimeout(autoLoopTimer); autoLoopTimer = null; }
+                hideSolvedCelebration();
+                isPaused = false;
+                btnPause.textContent = '⏸ Jeda';
+                if (activeMove) { commitMoveOnGPU(activeMove); if (!activeMove.isSolvingMove) scrambleCounter++; activeMove = null; }
+                moveQueue = [];
+
+                const scrambleCount = Math.max(1, parseInt(scrambleCountInput.value, 10) || 25);
+                let lastAxis = -1;
+                for (let i = 0; i < scrambleCount; i++) {
+                    const mv = generateRandomMove(cubeSize, lastAxis);
+                    lastAxis = mv.axis;
+                    moveQueue.push({ ...mv, isSolvingMove: false, phaseName: 'Mengacak Rubik', formulaTag: 'Acak' });
+                }
+                updateStatusUI('SCRAMBLING');
+            }
+
+            function executeInstantScramble() {
+                if (isComputingFormula) return;
+                if (autoLoopTimer) { clearTimeout(autoLoopTimer); autoLoopTimer = null; }
+                hideSolvedCelebration();
+                isPaused = false;
+                btnPause.textContent = '⏸ Jeda';
+                if (activeMove) { commitMoveOnGPU(activeMove); activeMove = null; }
+                moveQueue = [];
+
+                const scrambleCount = Math.max(1, parseInt(scrambleCountInput.value, 10) || 25);
+                let lastAxis = -1;
+                const scramNotations = [];
+                for (let i = 0; i < scrambleCount; i++) {
+                    const mv = generateRandomMove(cubeSize, lastAxis);
+                    lastAxis = mv.axis;
+                    commitMoveOnGPU(mv);
+                    scrambleCounter++;
+                    if (scramNotations.length < 16) scramNotations.push(moveToNotation(mv, cubeSize));
+                }
+                formulaStreamBox.innerHTML = `<span class="text-amber-300 font-semibold">[Teracak ${scrambleCount} Langkah]</span> ${scramNotations.join(' ')}${scrambleCount > 16 ? ' ...' : ''}`;
+                updateSliceGeometryUniforms(cubeSize, 0, 0, cubeSize - 1, 0.0);
+                updateStatusUI('SCRAMBLED');
+            }
+
+            let solveRetries = 0;
+            // Penutup solve: verifikasi piksel GPU dulu; kalau belum rapi, hitung ulang (maks 3x). Jangan pernah klaim "berhasil" palsu.
+            function finalizeSolve() {
+                updateSliceGeometryUniforms(cubeSize, 0, 0, cubeSize - 1, 0.0);
+                if (!isCubeSolvedOnGPU(cubeSize)) {
+                    if (solveRetries < 3) { solveRetries++; startAnimatedSolve(true); return; }
+                    formulaStreamBox.innerHTML = '<span class="text-rose-300 font-semibold">[Solver gagal]</span> <span class="text-sky-300">Kubus belum rapi setelah 3 percobaan ulang.</span>';
+                    updateStatusUI('SCRAMBLED');
+                    return;
+                }
+                solveRetries = 0;
+                updateStatusUI('SOLVED');
+                showSolvedCelebration();
+                if (autoLoopToggle.checked) {
+                    autoLoopTimer = setTimeout(() => { if (autoLoopToggle.checked && currentMode === 'SOLVED') startAnimatedScramble(); }, 1600);
+                }
+            }
+
+            async function startAnimatedSolve(isRetry) {
+                if (isComputingFormula) return;
+                if (isRetry !== true) solveRetries = 0;
+                if (autoLoopTimer) { clearTimeout(autoLoopTimer); autoLoopTimer = null; }
+                hideSolvedCelebration();
+                isPaused = false;
+                btnPause.textContent = '⏸ Jeda';
+                moveQueue = []; recentNotations = [];
+                if (activeMove) { commitMoveOnGPU(activeMove); activeMove = null; }
+                lastSolveInfo = ''; scrambleCounter = 0;
+
+                if (cubeSize === 2) {
+                    const sol = S2.solve(readGPUState(2, S2.st));
+                    if (sol && sol.length > 0) {
+                        lastSolveInfo = ` (Rumus BFS Optimal 2×2: ${sol.length} langkah)`;
+                        for (let idx = 0; idx < sol.length; idx++) {
+                            const m = sol[idx], fc = (m / 3) | 0, k = m % 3;
+                            const base = { axis: fc, sliceStart: 1, sliceEnd: 1, isSolvingMove: true, phaseName: 'Rumus BFS Optimal 2×2', formulaTag: `BFS (${idx + 1}/${sol.length})` };
+                            moveQueue.push({ ...base, dir: k === 1 ? -1 : 1 });
+                            if (k === 2) moveQueue.push({ ...base, dir: 1 });
+                        }
+                        updateStatusUI('SOLVING');
+                        return;
+                    }
+                    finalizeSolve();
+                    return;
+                }
+
+                if (cubeSize === 3) {
+                    K3.prep();
+                    const sol = K3.solve(readGPUState(3, K3.st), false);
+                    if (sol && sol.length > 0) {
+                        for (let idx = 0; idx < sol.length; idx++) {
+                            const m = sol[idx], fc = (m / 3) | 0, k = m % 3, axis = fc >> 1, sl = (fc & 1) ? 0 : 2;
+                            const phaseName = idx < Math.ceil(sol.length * 0.55) ? 'Kociemba Fase 1 (G0 → G1)' : 'Kociemba Fase 2 (G1 → Solved)';
+                            const base = { axis, sliceStart: sl, sliceEnd: sl, isSolvingMove: true, phaseName, formulaTag: `Kociemba (${idx + 1}/${sol.length})` };
+                            moveQueue.push({ ...base, dir: k === 1 ? -1 : 1 });
+                            if (k === 2) moveQueue.push({ ...base, dir: 1 });
+                        }
+                        lastSolveInfo = ` (Rumus 2-Fase Kociemba: ${moveQueue.length} langkah)`;
+                        updateStatusUI('SOLVING');
+                        return;
+                    }
+                    finalizeSolve();
+                    return;
+                }
+
+                isComputingFormula = true;
+                cancelComputeRequested = false;
+                solverComputeModal.classList.remove('opacity-0', 'pointer-events-none');
+                computeTitle.textContent = `Memindai FBO GPU Rubik ${cubeSize}×${cubeSize}...`;
+                computeSubtitle.textContent = `Menyusun Rumus Orbit Sudut, Wing-Edge & Komutator Niklas`;
+                computeProgressBar.style.width = '5%';
+                await new Promise(r => setTimeout(r, 25));
+
+                const generatedQueue = await solveCubeFromGPUPixels(cubeSize, (pct, phaseStr, stepCnt) => {
+                    computeProgressBar.style.width = `${pct}%`;
+                    computePhaseText.textContent = phaseStr;
+                    computeStepCount.textContent = `${formatNumberID(stepCnt)} langkah rumus`;
+                });
+
+                solverComputeModal.classList.add('opacity-0', 'pointer-events-none');
+                isComputingFormula = false;
+                if (cancelComputeRequested) { updateStatusUI('SCRAMBLED'); return; }
+
+                moveQueue = generatedQueue;
+                lastSolveInfo = ` (Rumus Murni Piksel GPU ${cubeSize}×${cubeSize}: ${formatNumberID(moveQueue.length)} langkah)`;
+                if (moveQueue.length > 0) updateStatusUI('SOLVING');
+                else { finalizeSolve(); }
+            }
+
+            sizeSlider.addEventListener('input', e => setCubeSize(e.target.value));
+            sizeInput.addEventListener('change', e => setCubeSize(e.target.value));
+            presetBtns.forEach(btn => btn.addEventListener('click', () => setCubeSize(btn.getAttribute('data-size'))));
+            btnScramble.addEventListener('click', startAnimatedScramble);
+            btnInstantScramble.addEventListener('click', executeInstantScramble);
+            btnSolve.addEventListener('click', startAnimatedSolve);
+            mobBtnScramble.addEventListener('click', () => { toggleMobileDrawer(false); startAnimatedScramble(); });
+            mobBtnInstant.addEventListener('click', () => { toggleMobileDrawer(false); executeInstantScramble(); });
+            mobBtnSolve.addEventListener('click', () => { toggleMobileDrawer(false); startAnimatedSolve(); });
+
+            btnTwistStep.addEventListener('click', () => {
+                if (isComputingFormula) return;
+                hideSolvedCelebration(); isPaused = false; btnPause.textContent = '⏸ Jeda';
+                moveQueue.push({ ...generateRandomMove(cubeSize), isSolvingMove: false, phaseName: 'Langkah Acak +1', formulaTag: '+1 Twist' });
+                updateStatusUI('SCRAMBLING');
+            });
+
+            btnPause.addEventListener('click', () => {
+                if (!activeMove && moveQueue.length === 0) return;
+                isPaused = !isPaused;
+                btnPause.textContent = isPaused ? '▶ Lanjut' : '⏸ Jeda';
+                updateStatusUI(currentMode);
+            });
+
+            btnReset.addEventListener('click', () => {
+                if (isComputingFormula) { cancelComputeRequested = true; return; }
+                if (autoLoopTimer) { clearTimeout(autoLoopTimer); autoLoopTimer = null; }
+                setCubeSize(cubeSize);
+            });
+
+            btnToggleFbo.addEventListener('click', () => {
+                showFboPreview = !showFboPreview;
+                fboPreviewCard.classList.toggle('opacity-0', !showFboPreview);
+                fboPreviewCard.classList.toggle('pointer-events-none', !showFboPreview);
+                btnToggleFbo.textContent = showFboPreview ? 'Aktif' : 'Nonaktif';
+            });
+
+            setCubeSize(3);
+            setSpeedTPS(3.0);
+            computeResponsiveCameraFraming();
+
+            function handleViewportResize() {
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                computeResponsiveCameraFraming();
+            }
+            window.addEventListener('resize', handleViewportResize);
+            window.addEventListener('orientationchange', () => setTimeout(handleViewportResize, 120));
+
+            let lastTime = performance.now(), frameCount = 0, fpsAccumTime = 0;
+
+            function animate(now) {
+                requestAnimationFrame(animate);
+                const dt = Math.min((now - lastTime) * 0.001, 0.1), frameMs = now - lastTime;
+                lastTime = now;
+
+                frameCount++; fpsAccumTime += frameMs;
+                if (fpsAccumTime >= 400) {
+                    hudFps.textContent = Math.round((frameCount * 1000) / fpsAccumTime);
+                    hudMs.textContent = `(${(fpsAccumTime / frameCount).toFixed(1)} ms)`;
+                    frameCount = 0; fpsAccumTime = 0;
+                }
+
+                if (!orbit.isDragging) orbit.targetTheta += dt * 0.10;
+                updateCamera();
+
+                if (!isPaused && !isComputingFormula) {
+                    let turnsBudget = turnsPerSecond * dt;
+                    const maxPasses = Math.max(2, Math.floor((window.innerWidth < 1024 ? 3e7 : 1.2e8) / (8 * cubeSize * cubeSize)));
+                    let passes = 0;
+
+                    while (turnsBudget > 0 && (activeMove || moveQueue.length > 0)) {
+                        if (!activeMove) {
+                            activeMove = moveQueue.shift();
+                            if (!activeMove) break;
+                            activeMove.progress = 0.0;
+                            logMoveFormulaToHUD(activeMove);
+                        }
+                        const remainingTurn = 1.0 - activeMove.progress;
+                        if (turnsBudget >= remainingTurn) {
+                            turnsBudget -= remainingTurn;
+                            commitMoveOnGPU(activeMove);
+                            if (!activeMove.isSolvingMove) scrambleCounter++;
+                            activeMove = null;
+                            if (++passes >= maxPasses) turnsBudget = 0;
+                        } else {
+                            activeMove.progress += turnsBudget;
+                            turnsBudget = 0;
+                        }
+                    }
+
+                    if (activeMove) {
+                        const t = activeMove.progress;
+                        const eased = turnsPerSecond <= 12.0 ? (t * t * (3.0 - 2.0 * t)) : t;
+                        updateSliceGeometryUniforms(cubeSize, activeMove.axis, activeMove.sliceStart, activeMove.sliceEnd, eased * (Math.PI * 0.5) * activeMove.dir);
+                        updateCountersUI();
+                    } else {
+                        updateSliceGeometryUniforms(cubeSize, 0, 0, cubeSize - 1, 0.0);
+                        if (moveQueue.length === 0) {
+                            if (currentMode === 'SCRAMBLING') {
+                                updateStatusUI('SCRAMBLED');
+                                if (autoLoopToggle.checked) {
+                                    autoLoopTimer = setTimeout(() => { if (autoLoopToggle.checked && currentMode === 'SCRAMBLED') startAnimatedSolve(); }, 1000);
+                                }
+                            } else if (currentMode === 'SOLVING') {
+                                finalizeSolve();
+                            }
+                        }
+                    }
+                }
+
+                renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+                renderer.setScissorTest(false);
+                renderer.clear();
+                renderer.render(bgScene, bgCam);
+                renderer.render(scene, camera);
+
+                if (showFboPreview && window.innerWidth >= 1024) {
+                    const rect = fboViewportPlaceholder.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) {
+                        const bottomY = window.innerHeight - rect.bottom;
+                        renderer.setViewport(rect.left, bottomY, rect.width, rect.height);
+                        renderer.setScissor(rect.left, bottomY, rect.width, rect.height);
+                        renderer.setScissorTest(true);
+                        renderer.render(previewScene, fboOrthoCam);
+                        renderer.setScissorTest(false);
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+</html>
