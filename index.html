@@ -75,6 +75,12 @@
             50% { border-color: rgba(16, 185, 129, 0.95); }
         }
         .solved-pulse { animation: pulse-border 2s infinite; }
+        /* Elemen tersembunyi tidak boleh menangkap klik/swipe (dead spot di tengah kubus) */
+        #solver-compute-modal.pointer-events-none, #solver-compute-modal.pointer-events-none * { pointer-events: none !important; }
+        #fbo-preview-card.pointer-events-none, #fbo-preview-card.pointer-events-none * { pointer-events: none !important; }
+        @media (max-width: 1023px) {
+            #control-drawer.opacity-0, #control-drawer.opacity-0 * { pointer-events: none !important; }
+        }
     </style>
 </head>
 <body class="w-full h-full relative overflow-hidden">
@@ -375,8 +381,25 @@
                 userZoomFactor: 1.0,
                 lookAtOffset: new THREE.Vector3(0, 0, 0),
                 isDragging: false, lastX: 0, lastY: 0,
-                activePointers: new Map(), lastPinchDist: 0
+                activePointers: new Map(), lastPinchDist: 0,
+                // Rotasi bebas (trackball) berbasis quaternion + inersia
+                quat: new THREE.Quaternion(), homeQuat: new THREE.Quaternion(),
+                velYaw: 0, velPitch: 0, lastMoveT: 0, idleT: 0, resetting: false
             };
+            (function initHomeQuat() {
+                const th = orbit.theta, ph = orbit.phi, sp = Math.sin(ph);
+                const eye = new THREE.Vector3(sp * Math.sin(th), Math.cos(ph), sp * Math.cos(th));
+                const m = new THREE.Matrix4().lookAt(eye, new THREE.Vector3(), new THREE.Vector3(0, 1, 0));
+                orbit.homeQuat.setFromRotationMatrix(m).normalize();
+                orbit.quat.copy(orbit.homeQuat);
+            })();
+            const _qd = new THREE.Quaternion(), _ax = new THREE.Vector3();
+            function rotateView(yaw, pitch) {
+                // yaw: putar mengelilingi sumbu "atas" kamera, pitch: sumbu "kanan" kamera
+                if (yaw) { _ax.set(0, 1, 0).applyQuaternion(orbit.quat); orbit.quat.premultiply(_qd.setFromAxisAngle(_ax, yaw)); }
+                if (pitch) { _ax.set(1, 0, 0).applyQuaternion(orbit.quat); orbit.quat.premultiply(_qd.setFromAxisAngle(_ax, pitch)); }
+                orbit.quat.normalize();
+            }
 
             function computeResponsiveCameraFraming() {
                 const w = window.innerWidth, h = window.innerHeight;
@@ -397,27 +420,52 @@
                 orbit.lookAtOffset.set(0, 0, 0);
             }
 
-            function updateCamera() {
-                orbit.theta += (orbit.targetTheta - orbit.theta) * 0.15;
-                orbit.phi += (orbit.targetPhi - orbit.phi) * 0.15;
+            function updateCamera(dt) {
+                dt = dt || 0.016;
+                if (orbit.isDragging) {
+                    orbit.idleT = 0;
+                } else if (orbit.resetting) {
+                    orbit.velYaw = orbit.velPitch = 0;
+                    orbit.quat.slerp(orbit.homeQuat, 1 - Math.exp(-dt * 7));
+                    if (orbit.quat.angleTo(orbit.homeQuat) < 0.002) { orbit.quat.copy(orbit.homeQuat); orbit.resetting = false; }
+                } else {
+                    // Inersia setelah dilepas
+                    if (Math.abs(orbit.velYaw) > 0.005 || Math.abs(orbit.velPitch) > 0.005) {
+                        rotateView(orbit.velYaw * dt, orbit.velPitch * dt);
+                        const damp = Math.exp(-dt * 3.2);
+                        orbit.velYaw *= damp; orbit.velPitch *= damp;
+                        orbit.idleT = 0;
+                    } else {
+                        orbit.velYaw = orbit.velPitch = 0;
+                        orbit.idleT += dt;
+                        // Auto-putar pelan setelah diam sebentar
+                        if (orbit.idleT > 1.2) rotateView(dt * 0.10, 0);
+                    }
+                }
                 orbit.radius += (orbit.targetRadius - orbit.radius) * 0.15;
-                const sinPhi = Math.sin(orbit.phi);
+                const dir = _ax.set(0, 0, 1).applyQuaternion(orbit.quat);
                 camera.position.set(
-                    orbit.lookAtOffset.x + orbit.radius * sinPhi * Math.sin(orbit.theta),
-                    orbit.lookAtOffset.y + orbit.radius * Math.cos(orbit.phi),
-                    orbit.lookAtOffset.z + orbit.radius * sinPhi * Math.cos(orbit.theta)
+                    orbit.lookAtOffset.x + dir.x * orbit.radius,
+                    orbit.lookAtOffset.y + dir.y * orbit.radius,
+                    orbit.lookAtOffset.z + dir.z * orbit.radius
                 );
+                camera.up.set(0, 1, 0).applyQuaternion(orbit.quat);
                 camera.lookAt(orbit.lookAtOffset);
             }
 
             const domElem = renderer.domElement;
+            domElem.style.touchAction = 'none';
+            domElem.addEventListener('contextmenu', (e) => e.preventDefault());
             domElem.addEventListener('pointerdown', (e) => {
                 orbit.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
                 domElem.setPointerCapture(e.pointerId);
+                orbit.resetting = false;
+                orbit.velYaw = orbit.velPitch = 0;
                 if (orbit.activePointers.size === 1) {
                     orbit.isDragging = true;
                     orbit.lastX = e.clientX;
                     orbit.lastY = e.clientY;
+                    orbit.lastMoveT = performance.now();
                 } else if (orbit.activePointers.size === 2) {
                     orbit.isDragging = false;
                     const pts = Array.from(orbit.activePointers.values());
@@ -433,8 +481,15 @@
                     const dy = e.clientY - orbit.lastY;
                     orbit.lastX = e.clientX;
                     orbit.lastY = e.clientY;
-                    orbit.targetTheta -= dx * 0.0075;
-                    orbit.targetPhi = Math.max(0.15, Math.min(Math.PI - 0.15, orbit.targetPhi - dy * 0.0075));
+                    const k = 0.0075;
+                    const yaw = -dx * k, pitch = -dy * k;
+                    rotateView(yaw, pitch);
+                    const now = performance.now();
+                    const mdt = Math.max(0.004, (now - orbit.lastMoveT) / 1000);
+                    orbit.lastMoveT = now;
+                    // kecepatan (rad/dtk) dihaluskan untuk inersia saat dilepas
+                    orbit.velYaw = orbit.velYaw * 0.5 + (yaw / mdt) * 0.5;
+                    orbit.velPitch = orbit.velPitch * 0.5 + (pitch / mdt) * 0.5;
                 } else if (orbit.activePointers.size === 2) {
                     const pts = Array.from(orbit.activePointers.values());
                     const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
@@ -457,6 +512,11 @@
                     orbit.lastY = remaining.y;
                 } else if (orbit.activePointers.size === 0) {
                     orbit.isDragging = false;
+                    // jika berhenti dulu sebelum dilepas, tidak ada inersia
+                    if (performance.now() - orbit.lastMoveT > 90) orbit.velYaw = orbit.velPitch = 0;
+                    const maxV = 8;
+                    orbit.velYaw = Math.max(-maxV, Math.min(maxV, orbit.velYaw));
+                    orbit.velPitch = Math.max(-maxV, Math.min(maxV, orbit.velPitch));
                 }
             }
             domElem.addEventListener('pointerup', handlePointerEnd);
@@ -799,7 +859,7 @@
             btnMobileDrawer.addEventListener('click', () => toggleMobileDrawer());
             btnCloseDrawer.addEventListener('click', () => toggleMobileDrawer(false));
             if (mobBtnSizeQuick) mobBtnSizeQuick.addEventListener('click', () => toggleMobileDrawer());
-            btnFitCam.addEventListener('click', () => { orbit.userZoomFactor = 1.0; orbit.targetTheta = 0.68; orbit.targetPhi = 1.04; computeResponsiveCameraFraming(); });
+            btnFitCam.addEventListener('click', () => { orbit.userZoomFactor = 1.0; orbit.resetting = true; computeResponsiveCameraFraming(); });
             btnCancelCompute.addEventListener('click', () => { cancelComputeRequested = true; });
 
             const formatNumberID = num => num.toLocaleString('id-ID');
@@ -1853,8 +1913,7 @@
                     frameCount = 0; fpsAccumTime = 0;
                 }
 
-                if (!orbit.isDragging) orbit.targetTheta += dt * 0.10;
-                updateCamera();
+                updateCamera(dt);
 
                 if (!isPaused && !isComputingFormula) {
                     let turnsBudget = turnsPerSecond * dt;
