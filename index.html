@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GPU-Bound Rubik's Cube Visualizer & True Formula Solver (2x2 - 400x400)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="window.__threeFailed=true"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         html, body {
@@ -85,6 +85,7 @@
 </head>
 <body class="w-full h-full relative overflow-hidden">
 
+    <div id="fatal-banner" class="hidden fixed top-0 inset-x-0 z-50 bg-rose-600/95 text-white text-xs sm:text-sm font-semibold px-4 py-2 text-center"></div>
     <div id="canvas-container" class="w-full h-full absolute inset-0 z-0 cursor-grab active:cursor-grabbing"></div>
 
     <!-- Header & GPU Telemetry HUD -->
@@ -104,7 +105,7 @@
                         <h1 class="font-extrabold text-xs sm:text-base tracking-tight text-white truncate">HYPERCUBE <span class="text-sky-400">TRUE SOLVER</span></h1>
                         <span class="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 mono flex-shrink-0">Zero-History</span>
                     </div>
-                    <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 truncate">Solver Murni Baca Piksel GPU (2×2 – 400×400)</p>
+                    <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 truncate">State dibaca dari piksel GPU · solver berjalan di CPU (JS) · 2×2 – 400×400</p>
                 </div>
                 <button id="btn-fit-cam" title="Reset Sudut Kamera" class="p-1.5 sm:p-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition flex-shrink-0">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -123,10 +124,10 @@
 
         <div class="glass-panel rounded-xl sm:rounded-2xl px-2.5 py-1.5 sm:px-4 sm:py-2.5 pointer-events-auto flex lg:grid lg:grid-cols-5 items-center justify-between gap-2 sm:gap-5 text-xs overflow-x-auto">
             <div class="flex items-center lg:block gap-1.5 flex-shrink-0">
-                <div class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-medium">GPU</div>
+                <div class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-medium" title="FPS dihitung dari frame requestAnimationFrame yang benar-benar dirender">Render (terukur)</div>
                 <div class="mono font-bold text-xs sm:text-sm text-emerald-400 flex items-baseline gap-1">
-                    <span id="hud-fps">60</span><span class="text-[9px] sm:text-[10px] text-slate-400 font-normal">FPS</span>
-                    <span id="hud-ms" class="hidden sm:inline text-[11px] text-slate-400 font-normal">(1.2 ms)</span>
+                    <span id="hud-fps">—</span><span class="text-[9px] sm:text-[10px] text-slate-400 font-normal">FPS</span>
+                    <span id="hud-ms" class="hidden sm:inline text-[11px] text-slate-400 font-normal">(— ms)</span>
                 </div>
             </div>
             <div class="flex items-center lg:block gap-1.5 flex-shrink-0">
@@ -138,8 +139,8 @@
                 <div id="hud-method" class="mono font-bold text-xs text-indigo-300 mt-0.5 truncate max-w-[140px]">Kociemba 2-Fase</div>
             </div>
             <div class="hidden md:block flex-shrink-0">
-                <div class="text-[10px] uppercase tracking-wider text-slate-400 font-medium">VRAM FBO</div>
-                <div id="hud-vram" class="mono font-bold text-sm text-amber-300 mt-0.5">0.01 MB</div>
+                <div class="text-[10px] uppercase tracking-wider text-slate-400 font-medium" title="Estimasi: 2 render target RGBA8 berukuran 4N×2N. Bukan pengukuran VRAM hardware.">Tekstur FBO (est.)</div>
+                <div id="hud-vram" class="mono font-bold text-sm text-amber-300 mt-0.5">≈ 0.01 MB</div>
             </div>
             <div class="border-l border-slate-700/60 pl-2 sm:pl-4 flex items-center lg:flex-col lg:justify-center gap-1.5 flex-shrink-0">
                 <div class="hidden lg:block text-[10px] uppercase tracking-wider text-slate-400 font-medium">Status Rubik</div>
@@ -238,6 +239,7 @@
                         • <strong>Fase 2:</strong> Konjugat Wing-Edge <code class="text-sky-300">B · r_k · B'</code><br>
                         • <strong>Fase 3:</strong> Komutator Pusat Niklas <code class="text-sky-300">[r_i, F · l_j · F']</code>
                     </div>
+                    <div id="support-note" class="text-[10px] leading-relaxed text-emerald-300/90"></div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2.5">
@@ -354,7 +356,7 @@
             <span class="text-[10px] font-bold uppercase tracking-wider text-slate-300">Memori Tekstur FBO GPU (6 Sisi)</span>
             <span id="fbo-res-label" class="mono text-[10px] text-sky-400">12×6 px</span>
         </div>
-        <div class="text-[10px] text-slate-400 mb-1.5">Atlas tekstur <code class="text-slate-300">(4N × 2N)</code> di VRAM GPU:</div>
+        <div class="text-[10px] text-slate-400 mb-1.5">Atlas tekstur <code class="text-slate-300">(4N × 2N)</code> di memori GPU (WebGL):</div>
         <div class="grid grid-cols-4 gap-1 text-[9px] mono text-center text-slate-400 mb-1">
             <span>+X (Kanan)</span><span>-X (Kiri)</span><span>+Y (Atas)</span><span>-Y (Bawah)</span>
         </div>
@@ -364,9 +366,696 @@
     </div>
 
     <script>
+/* ===== HC CORE (pure, DOM-free; embedded verbatim in the HTML and unit-tested in Node) ===== */
+const HC = (function () {
+'use strict';
+const NORM = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+const PALETTE = [[242,41,51],[255,122,10],[247,250,255],[250,217,15],[13,204,92],[26,117,250]];
+const MAX_N = 400;
+const nowMs = () => (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+const tickYield = () => new Promise(r => setTimeout(r, 0));
+
+// ---------- RNG ----------
+function makeRng(seed) { let a = seed | 0; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- notation ----------
+function moveToNotation(mv, N) {
+    const s = mv.sliceStart, e = mv.sliceEnd, isPos = (s + e) * 0.5 >= (N - 1) * 0.5;
+    const faceChar = mv.axis === 0 ? (isPos ? 'R' : 'L') : (mv.axis === 1 ? (isPos ? 'U' : 'D') : (isPos ? 'F' : 'B'));
+    const cwSign = isPos ? -1 : 1;
+    const suffix = (mv.dir === cwSign) ? "" : "'";
+    const d1 = isPos ? (N - 1 - e) + 1 : s + 1;
+    const d2 = isPos ? (N - 1 - s) + 1 : e + 1;
+    if (d1 === 1 && d2 === 1) return `${faceChar}${suffix}`;
+    if (d1 === 1) return `${d2 > 2 ? d2 : ''}${faceChar}w${suffix}`;
+    if (d1 === d2) return `${d1}${faceChar}${suffix}`;
+    return `${d1}-${d2}${faceChar}w${suffix}`;
+}
+
+// ---------- scramble generator: only produces moves the matching solver model supports ----------
+// N=2: both layers are "outer" layers (S2 solver derives its goal frame from the stationary corner).
+// N=3: outer layers only (slice 0 / 2) = exactly the Kociemba move model (no M/E/S slices).
+// N>=4: any single layer (N<8) or multi-layer spans (N>=8) - orbit solver handles all of them (verified by tests).
+function generateMove(N, lastAxis, rnd) {
+    rnd = rnd || Math.random;
+    let axis = Math.floor(rnd() * 3);
+    if (axis === lastAxis && rnd() < 0.65) axis = (axis + 1 + Math.floor(rnd() * 2)) % 3;
+    const dir = rnd() < 0.5 ? 1 : -1;
+    if (N <= 3) { const sl = rnd() < 0.5 ? 0 : N - 1; return { axis, sliceStart: sl, sliceEnd: sl, dir }; }
+    const maxSpan = N >= 8 ? Math.max(1, Math.floor(N * (rnd() < 0.7 ? 0.08 : 0.22))) : 1;
+    const span = Math.floor(rnd() * maxSpan);
+    const sliceStart = Math.floor(rnd() * (N - span));
+    return { axis, sliceStart, sliceEnd: Math.min(N - 1, sliceStart + span), dir };
+}
+
+// ---------- compact move buffer: 1 Int32 per move ----------
+// bits: axis(0-1) | dir(2: 1=+1) | sliceStart(3-11) | sliceEnd(12-20) | phase(21-28)
+class MoveBuf {
+    constructor(cap) { this.a = new Int32Array(cap || 256); this.n = 0; }
+    push(axis, s, e, dir, ph) {
+        if (this.n === this.a.length) { const b = new Int32Array(this.a.length * 2); b.set(this.a); this.a = b; }
+        this.a[this.n++] = axis | ((dir > 0 ? 1 : 0) << 2) | (s << 3) | (e << 12) | (ph << 21);
+    }
+    static decode(c) { return { axis: c & 3, dir: (c >> 2) & 1 ? 1 : -1, sliceStart: (c >> 3) & 511, sliceEnd: (c >> 12) & 511, phase: (c >> 21) & 255 }; }
+    get(i) { return MoveBuf.decode(this.a[i]); }
+    toArray() { const o = []; for (let i = 0; i < this.n; i++) o.push(this.get(i)); return o; }
+    trim() { return this.a.subarray(0, this.n); }
+}
+
+// ---------- geometry (used by 2x2 / 3x3 / orbit builders; derived from the same atlas layout as the GLSL) ----------
+function makeGeom(N) {
+    const fPos = (f, u, v) => { const x = u*2-1, y = v*2-1;
+        return f===0?[1,y,-x]: f===1?[-1,y,x]: f===2?[x,1,-y]: f===3?[x,-1,y]: f===4?[x,y,1]:[-x,y,-1]; };
+    const rot = (p, a, d) => { const s = Math.sign(d);
+        return a===0?[p[0],-s*p[2],s*p[1]]: a===1?[s*p[2],p[1],-s*p[0]]:[-s*p[1],s*p[0],p[2]]; };
+    const cl = v => Math.floor(Math.min(0.999999, Math.max(0, 0.5*(v+1))) * N);
+    const atlas = (p, n) => { const an = n.map(Math.abs); let f, c;
+        if (an[0]>an[1] && an[0]>an[2]) { if (n[0]>0) { f=0; c=[-p[2],p[1]]; } else { f=1; c=[p[2],p[1]]; } }
+        else if (an[1]>an[0] && an[1]>an[2]) { if (n[1]>0) { f=2; c=[p[0],-p[2]]; } else { f=3; c=[p[0],p[2]]; } }
+        else { if (n[2]>0) { f=4; c=[p[0],p[1]]; } else { f=5; c=[-p[0],p[1]]; } }
+        const row = Math.floor(f/4), col = f - row*4;
+        return [col*N + cl(c[0]), row*N + cl(c[1])]; };
+    const st = [], idxOf = {};
+    for (let f = 0; f < 6; f++) { const row = Math.floor(f/4), col = f - row*4;
+        for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+            const x = col*N+i, y = row*N+j; idxOf[x+','+y] = st.length;
+            st.push({ f, x, y, i, j, pos: fPos(f, (i+.5)/N, (j+.5)/N) }); } }
+    function buildPerm(axis, dir, slice) { return st.map((s, d) => {
+        if (Math.min(N-1, Math.floor((s.pos[axis]+1)*0.5*N)) !== slice) return d;
+        const a = atlas(rot(s.pos, axis, -dir), rot(NORM[s.f], axis, -dir));
+        return idxOf[a[0]+','+a[1]]; }); }
+    return { st, buildPerm };
+}
+const applyPerm = (s, p) => { const o = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) o[i] = s[p[i]]; return o; };
+const composePerm = (p1, p2) => { const o = new Uint8Array(p1.length); for (let i = 0; i < p1.length; i++) o[i] = p1[p2[i]]; return o; };
+
+// ---------- 2x2 : bidirectional BFS ----------
+const S2 = (function () {
+    const { st, buildPerm } = makeGeom(2);
+    const MV = [];
+    for (let a = 0; a < 3; a++) { const p = buildPerm(a,1,1), q = buildPerm(a,-1,1); MV.push(p, q, p.map(i => p[i])); }
+    const inv = m => Math.floor(m/3)*3 + [1,0,2][m%3];
+    const apply = (s, p) => { const o = new Uint8Array(24); for (let d = 0; d < 24; d++) o[d] = s[p[d]]; return o; };
+    const key = a => String.fromCharCode.apply(null, a);
+    function goalOf(s) { const c = {};
+        st.forEach((q, i) => { if (q.pos.every(v => v < 0)) c[q.f] = s[i]; });
+        if (c[1] === undefined || c[3] === undefined || c[5] === undefined) return null;
+        if ((c[1] >> 1) === (c[3] >> 1) || (c[1] >> 1) === (c[5] >> 1) || (c[3] >> 1) === (c[5] >> 1)) return null;
+        const gf = [c[1]^1, c[1], c[3]^1, c[3], c[5]^1, c[5]];
+        return Uint8Array.from(st.map(q => gf[q.f])); }
+    // returns {moves:[m...]} | {error}
+    function solve(state) {
+        const G = goalOf(state);
+        if (!G) return { error: 'Tiga stiker sudut referensi 2×2 tidak valid (warna sumbu sama).' };
+        const kS = key(state), kG = key(G);
+        if (kS === kG) return { moves: [] };
+        const F = new Map([[kS, null]]), B = new Map([[kG, null]]);
+        let fr = [state], br = [G], meet = null;
+        const expand = (list, M, O, back) => { const nx = [];
+            for (const s of list) { const ks = key(s);
+                for (let m = 0; m < 9; m++) { const t = apply(s, MV[m]), kt = key(t);
+                    if (M.has(kt)) continue;
+                    M.set(kt, { p: ks, m: back ? inv(m) : m }); nx.push(t);
+                    if (O.has(kt)) { meet = kt; return nx; } } }
+            return nx; };
+        for (let it = 0; it < 16 && meet === null; it++) {
+            if (fr.length <= br.length) fr = expand(fr, F, B, false); else br = expand(br, B, F, true); }
+        if (meet === null) return { error: 'Tidak ada solusi 2×2 ditemukan dalam kedalaman 16 (state kemungkinan tidak valid).' };
+        const a = [];
+        for (let k = meet; F.get(k); k = F.get(k).p) a.push(F.get(k).m);
+        a.reverse();
+        for (let k = meet; B.get(k); k = B.get(k).p) a.push(B.get(k).m);
+        return { moves: a }; }
+    return { st, buildPerm, apply, solve, MV };
+})();
+
+// ---------- 3x3 : Kociemba two-phase ----------
+const K3 = (function () {
+    const { st, buildPerm } = makeGeom(3);
+    const EPS = 0.01, grp = new Map(), cen = [];
+    st.forEach((s, i) => {
+        if (s.pos.filter(v => Math.abs(v) < EPS).length === 2) { cen[s.f] = i; return; }
+        const k = s.pos.map(v => Math.abs(v) < EPS ? 0 : Math.sign(v)).join(',');
+        if (!grp.has(k)) grp.set(k, []);
+        grp.get(k).push(i);
+    });
+    const keys = [...grp.keys()];
+    const cK = keys.filter(k => !k.includes('0')).sort();
+    const eK = keys.filter(k => k.includes('0')).sort((a, b) => ((a.split(',')[1] === '0') - (b.split(',')[1] === '0')) || (a < b ? -1 : 1));
+    const byF = l => { const m = {}; l.forEach(i => m[st[i].f] = i); return m; };
+    const C = cK.map(k => { const [sx, sy, sz] = k.split(',').map(Number), m = byF(grp.get(k));
+        const y = m[sy > 0 ? 2 : 3], x = m[sx > 0 ? 0 : 1], z = m[sz > 0 ? 4 : 5];
+        return sx * sy * sz > 0 ? [y, z, x] : [y, x, z]; });
+    const E = eK.map(k => { const v = k.split(',').map(Number), l = grp.get(k), m = byF(l);
+        const first = v[1] !== 0 ? m[v[1] > 0 ? 2 : 3] : m[v[2] > 0 ? 4 : 5];
+        return [first, l.find(i => i !== first)]; });
+    const fk = a => a.slice().sort().join();
+    const cHome = new Map(C.map((l, i) => [fk(l.map(j => st[j].f)), i]));
+    const eHome = new Map(E.map((l, i) => [fk(l.map(j => st[j].f)), i]));
+    const owner = new Map();
+    C.forEach((l, c) => l.forEach((s, j) => owner.set(s, [c, j])));
+    E.forEach((l, e) => l.forEach((s, j) => owner.set(s, [e, j])));
+    const isY = v => v === 2 || v === 3;
+    function toCubie(V) {
+        const cp = [], co = [], ep = [], eo = [];
+        C.forEach(l => { const v = l.map(i => V[i]); cp.push(cHome.get(fk(v))); co.push(v.findIndex(isY)); });
+        E.forEach(l => { const v = l.map(i => V[i]); ep.push(eHome.get(fk(v)));
+            eo.push(v.indexOf(v.some(isY) ? v.find(isY) : v.find(x => x === 4 || x === 5))); });
+        return { cp, co, ep, eo };
+    }
+    const parity = p => { let c = 0; for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) if (p[i] > p[j]) c++; return c & 1; };
+    // Returns a human-readable reason if the cubie state is not a legal (solvable) 3x3 state, else null.
+    function validateCubie(cu) {
+        const okPerm = (a, n) => a.length === n && a.every(v => v !== undefined && v >= 0 && v < n) && new Set(a).size === n;
+        if (!okPerm(cu.cp, 8)) return 'Permutasi sudut tidak valid (kombinasi warna sudut mustahil).';
+        if (!okPerm(cu.ep, 12)) return 'Permutasi tepi tidak valid (kombinasi warna tepi mustahil).';
+        if (cu.co.some(v => v < 0) || cu.eo.some(v => v < 0)) return 'Orientasi stiker tidak dapat ditentukan.';
+        if (cu.co.reduce((a, b) => a + b, 0) % 3 !== 0) return 'Orientasi sudut tidak valid (satu sudut terpuntir).';
+        if (cu.eo.reduce((a, b) => a + b, 0) % 2 !== 0) return 'Orientasi tepi tidak valid (satu tepi terbalik).';
+        if (parity(cu.cp) !== parity(cu.ep)) return 'Paritas permutasi sudut dan tepi tidak cocok (state tidak dapat diselesaikan).';
+        return null;
+    }
+    function cubieMove(p) { const o = { cs: [], cd: [], es: [], ed: [] };
+        C.forEach(l => { const [c2, k] = owner.get(p[l[0]]); o.cs.push(c2); o.cd.push((3 - k) % 3); });
+        E.forEach(l => { const [e2, k] = owner.get(p[l[0]]); o.es.push(e2); o.ed.push(k); });
+        return o; }
+    const applyC = (u, m) => ({
+        cp: u.cp.map((_, c) => u.cp[m.cs[c]]), co: u.co.map((_, c) => (u.co[m.cs[c]] + m.cd[c]) % 3),
+        ep: u.ep.map((_, e) => u.ep[m.es[e]]), eo: u.eo.map((_, e) => (u.eo[m.es[e]] + m.ed[e]) % 2) });
+    const encP = a => { const n = a.length; let r = 0;
+        for (let i = 0; i < n; i++) { let c = 0; for (let j = i + 1; j < n; j++) if (a[j] < a[i]) c++; r = r * (n - i) + c; } return r; };
+    const decP = (r, n) => { const d = []; for (let i = n - 1; i >= 0; i--) { d[i] = r % (n - i); r = Math.floor(r / (n - i)); }
+        const av = [...Array(n).keys()]; return d.map(x => av.splice(x, 1)[0]); };
+    const decT = t => { const co = []; let s = 0; for (let i = 6; i >= 0; i--) { co[i] = t % 3; t = Math.floor(t / 3); s += co[i]; } co[7] = (3 - s % 3) % 3; return co; };
+    const encT = co => { let t = 0; for (let i = 0; i < 7; i++) t = t * 3 + co[i]; return t; };
+    const decF = f => { const eo = []; let s = 0; for (let i = 10; i >= 0; i--) { eo[i] = f % 2; f >>= 1; s += eo[i]; } eo[11] = s % 2; return eo; };
+    const encF = eo => { let f = 0; for (let i = 0; i < 11; i++) f = f * 2 + eo[i]; return f; };
+    const pop = m => { let c = 0; while (m) { c += m & 1; m >>= 1; } return c; };
+    const masks = [0xF00]; for (let m = 0; m < 4096; m++) if (m !== 0xF00 && pop(m) === 4) masks.push(m);
+    const mrank = new Map(masks.map((m, i) => [m, i]));
+    const P2 = [6, 7, 8, 9, 10, 11, 2, 5, 14, 17];
+    const SP = [], MVc = [];
+    let T = null, stage = 0; const part = {};
+    const bfs = (s1, m1, s2, m2, nm) => { const P = new Uint8Array(s1 * s2).fill(255); P[0] = 0; let d = 0, cnt = 1;
+        while (cnt > 0) { cnt = 0;
+            for (let i = 0; i < P.length; i++) if (P[i] === d) { const a = (i / s2) | 0, b = i - a * s2;
+                for (let m = 0; m < nm; m++) { const j = m1[a*nm+m] * s2 + m2[b*nm+m]; if (P[j] === 255) { P[j] = d + 1; cnt++; } } }
+            d++; } return P; };
+    const stages = [
+        () => { for (let f = 0; f < 6; f++) { const ax = f >> 1, sl = (f & 1) ? 0 : 2;
+                const p = buildPerm(ax, 1, sl), q = buildPerm(ax, -1, sl); SP.push(p, q, p.map(i => p[i])); }
+            SP.forEach(p => MVc.push(cubieMove(p)));
+            const mvT = new Uint16Array(2187 * 18), mvF = new Uint16Array(2048 * 18), mvS = new Uint16Array(495 * 18);
+            for (let m = 0; m < 18; m++) { const { cs, cd, es, ed } = MVc[m];
+                for (let t = 0; t < 2187; t++) { const co = decT(t); mvT[t*18+m] = encT(co.map((_, c) => (co[cs[c]] + cd[c]) % 3)); }
+                for (let f = 0; f < 2048; f++) { const eo = decF(f); mvF[f*18+m] = encF(eo.map((_, e) => (eo[es[e]] + ed[e]) % 2)); }
+                for (let r = 0; r < 495; r++) { let nm = 0; for (let c = 0; c < 12; c++) if ((masks[r] >> es[c]) & 1) nm |= 1 << c; mvS[r*18+m] = mrank.get(nm); } }
+            Object.assign(part, { mvT, mvF, mvS }); },
+        () => { const mvCP = new Uint16Array(40320 * 10), mvEP = new Uint16Array(40320 * 10), mvSL = new Uint8Array(24 * 10);
+            for (let i = 0; i < 10; i++) { const { cs, es } = MVc[P2[i]];
+                for (let a = 0; a < 40320; a++) { const x = decP(a, 8);
+                    mvCP[a*10+i] = encP(x.map((_, c) => x[cs[c]])); mvEP[a*10+i] = encP(x.map((_, c) => x[es[c]])); }
+                for (let a = 0; a < 24; a++) { const x = decP(a, 4); mvSL[a*10+i] = encP(x.map((_, c) => x[es[c + 8] - 8])); } }
+            Object.assign(part, { mvCP, mvEP, mvSL }); },
+        () => { part.pTS = bfs(2187, part.mvT, 495, part.mvS, 18); },
+        () => { part.pFS = bfs(2048, part.mvF, 495, part.mvS, 18); },
+        () => { part.pCP = bfs(40320, part.mvCP, 24, part.mvSL, 10); },
+        () => { part.pEP = bfs(40320, part.mvEP, 24, part.mvSL, 10); T = part; }
+    ];
+    function build() { while (stage < stages.length) stages[stage++](); return T; }
+    async function buildAsync(yieldFn) { while (stage < stages.length) { stages[stage++](); await yieldFn(); } return T; }
+    function tidy(sol) {
+        const out = [];
+        for (const m of sol) { const f = (m / 3) | 0, q = [1, 3, 2][m % 3], l = out[out.length - 1];
+            if (l && l.f === f) l.q = (l.q + q) % 4; else out.push({ f, q }); }
+        return out.filter(o => o.q).map(o => o.f * 3 + [0, 0, 2, 1][o.q]); }
+    // Returns {moves, p1} (p1 = number of moves belonging to Kociemba phase 1, measured from the real search)
+    // or {error}.
+    function solve(colors, useFixedCenters, opts) {
+        opts = opts || {}; const extraMs = opts.extraMs == null ? 150 : opts.extraMs, limitMs = opts.limitMs || 15000;
+        const t = build(), home = [];
+        if (useFixedCenters) { for (let f = 0; f < 6; f++) home[f] = f; }
+        else { const cc = new Set(); for (let f = 0; f < 6; f++) cc.add(colors[cen[f]]);
+            if (cc.size !== 6) return { error: 'Warna pusat 3×3 tidak unik (state tidak valid).' };
+            for (let f = 0; f < 6; f++) home[colors[cen[f]]] = f; }
+        const cu = toCubie(colors.map(c => home[c]));
+        const bad = validateCubie(cu); if (bad) return { error: bad };
+        let best = null, bestP1 = 0, until = Infinity, timedOut = false, nodes = 0; const path = [];
+        const hard = Date.now() + limitMs;
+        const search2 = (a, b, c, dl, last, out) => {
+            if (Math.max(t.pCP[a*24+c], t.pEP[b*24+c]) > dl) return false;
+            if (dl === 0) return true;
+            for (let i = 0; i < 10; i++) { const m = P2[i], f = (m / 3) | 0;
+                if (last >= 0 && (f === last || ((f >> 1) === (last >> 1) && f < last))) continue;
+                out.push(m);
+                if (search2(t.mvCP[a*10+i], t.mvEP[b*10+i], t.mvSL[c*10+i], dl - 1, f, out)) return true;
+                out.pop(); }
+            return false; };
+        const finish = last => {
+            let u = cu; for (const m of path) u = applyC(u, MVc[m]);
+            const a = encP(u.cp), b = encP(u.ep.slice(0, 8)), c = encP(u.ep.slice(8).map(v => v - 8));
+            const h2 = Math.max(t.pCP[a*24+c], t.pEP[b*24+c]);
+            const lim = Math.min(18, (best ? best.length - 1 : 99) - path.length);
+            for (let d2 = h2; d2 <= lim; d2++) { const out = [];
+                if (search2(a, b, c, d2, last, out)) { if (!best) until = Date.now() + extraMs; best = path.concat(out); bestP1 = path.length; return; } } };
+        const search1 = (a, b, s, dl, last) => {
+            if (timedOut) return;
+            if ((++nodes & 8191) === 0 && Date.now() > hard) { timedOut = true; return; }
+            if (best && Date.now() > until) return;
+            if (Math.max(t.pTS[a*495+s], t.pFS[b*495+s]) > dl) return;
+            if (dl === 0) { finish(last); return; }
+            for (let m = 0; m < 18; m++) { const f = (m / 3) | 0;
+                if (last >= 0 && (f === last || ((f >> 1) === (last >> 1) && f < last))) continue;
+                path.push(m); search1(t.mvT[a*18+m], t.mvF[b*18+m], t.mvS[s*18+m], dl - 1, f); path.pop(); } };
+        const a0 = encT(cu.co), b0 = encF(cu.eo);
+        let m0 = 0; cu.ep.forEach((pc, pos) => { if (pc >= 8) m0 |= 1 << pos; });
+        const s0 = mrank.get(m0);
+        if (s0 === undefined) return { error: 'Posisi tepi lapisan tengah tidak valid.' };
+        for (let d1 = 0; d1 <= 22; d1++) {
+            if (best && (d1 >= best.length || Date.now() > until)) break;
+            if (timedOut) break;
+            search1(a0, b0, s0, d1, -1); }
+        if (!best) return { error: timedOut ? `Pencarian Kociemba melewati batas waktu ${limitMs} ms.` : 'Kociemba tidak menemukan solusi ≤ 22 langkah-fase-1 (state tidak valid?).' };
+        const m1 = tidy(best.slice(0, bestP1)), m2 = tidy(best.slice(bestP1));
+        return { moves: m1.concat(m2), p1: m1.length }; }
+    return { st, solve, prep: build, prepAsync: buildAsync, ready: () => stage >= stages.length, SP, cen, toCubie, validateCubie };
+})();
+
+// ---------- orbit sticker sets (centers / wings) ----------
+function buildStickerSet(N, bases) {
+    const fPos = (f, u, v) => { const x = u*2-1, y = v*2-1;
+        return f===0?[1,y,-x]: f===1?[-1,y,x]: f===2?[x,1,-y]: f===3?[x,-1,y]: f===4?[x,y,1]:[-x,y,-1]; };
+    const rot = (p, a, d) => { const s = Math.sign(d);
+        return a===0?[p[0],-s*p[2],s*p[1]]: a===1?[s*p[2],p[1],-s*p[0]]:[-s*p[1],s*p[0],p[2]]; };
+    const cl = v => Math.floor(Math.min(0.999999, Math.max(0, 0.5*(v+1))) * N);
+    const toFaceIJ = (p, n) => { const an = n.map(Math.abs); let f, c;
+        if (an[0]>an[1] && an[0]>an[2]) { if (n[0]>0) { f=0; c=[-p[2],p[1]]; } else { f=1; c=[p[2],p[1]]; } }
+        else if (an[1]>an[0] && an[1]>an[2]) { if (n[1]>0) { f=2; c=[p[0],-p[2]]; } else { f=3; c=[p[0],p[2]]; } }
+        else { if (n[2]>0) { f=4; c=[p[0],p[1]]; } else { f=5; c=[-p[0],p[1]]; } }
+        return { f, i: cl(c[0]), j: cl(c[1]) }; };
+    const coordsOnFace = [];
+    for (const [bI, bJ] of bases) { let curI = bI, curJ = bJ;
+        for (let r = 0; r < 4; r++) { coordsOnFace.push([curI, curJ]); const nextI = N - 1 - curJ, nextJ = curI; curI = nextI; curJ = nextJ; } }
+    const orbitList = [], keyToIdx = new Map();
+    for (let f = 0; f < 6; f++) for (const [i, j] of coordsOnFace) {
+        const pos = fPos(f, (i + 0.5) / N, (j + 0.5) / N);
+        keyToIdx.set(`${f},${i},${j}`, orbitList.length); orbitList.push({ f, i, j, pos }); }
+    function getMovePerm(axis, slice, dir) {
+        const M = orbitList.length, perm = new Uint8Array(M);
+        for (let d = 0; d < M; d++) { const s = orbitList[d];
+            const sl = Math.min(N - 1, Math.floor((s.pos[axis] + 1) * 0.5 * N));
+            if (sl !== slice) perm[d] = d;
+            else { const src = toFaceIJ(rot(s.pos, axis, -dir), rot(NORM[s.f], axis, -dir)); perm[d] = keyToIdx.get(`${src.f},${src.i},${src.j}`); } }
+        return perm; }
+    return { orbitList, getMovePerm, perFace: coordsOnFace.length };
+}
+const buildOrbitStickers = (N, bi, bj) => buildStickerSet(N, [[bi, bj]]);
+
+// ---------- wing library (lazy) ----------
+let _wing = null;
+function getWingTable() {
+    if (_wing) return _wing;
+    const wingRef = buildStickerSet(4, [[1, 0], [2, 0]]);
+    const permCache = new Map();
+    const wingRefPerm = (ax, sl, dir) => { const k = ax * 100 + sl * 10 + (dir > 0 ? 1 : 0); let p = permCache.get(k); if (!p) { p = wingRef.getMovePerm(ax, sl, dir); permCache.set(k, p); } return p; };
+    const wingMacros = [];
+    for (let ax = 0; ax < 3; ax++) for (let side = 0; side < 2; side++) { const refSlice = side === 0 ? 1 : 2;
+        for (const dir of [1, -1]) wingMacros.push({ perm: wingRef.getMovePerm(ax, refSlice, dir), steps: [{ isInner: true, axis: ax, side, dir }] }); }
+    for (let bAx = 0; bAx < 3; bAx++) for (const bSide of [0, 1]) { const bRefSlice = bSide === 0 ? 0 : 3;
+        for (const bDir of [1, -1]) {
+            const pB = wingRef.getMovePerm(bAx, bRefSlice, bDir), pBInv = wingRef.getMovePerm(bAx, bRefSlice, -bDir);
+            for (let aAx = 0; aAx < 3; aAx++) { if (aAx === bAx) continue;
+                for (let aSide = 0; aSide < 2; aSide++) { const aRefSlice = aSide === 0 ? 1 : 2;
+                    for (const aDir of [1, -1]) { const pA = wingRef.getMovePerm(aAx, aRefSlice, aDir);
+                        wingMacros.push({ perm: composePerm(composePerm(pB, pA), pBInv), steps: [
+                            { isInner: false, axis: bAx, side: bSide, dir: bDir },
+                            { isInner: true, axis: aAx, side: aSide, dir: aDir },
+                            { isInner: false, axis: bAx, side: bSide, dir: -bDir } ] }); } } } } }
+    const inv = p => { const q = new Uint8Array(p.length); for (let i = 0; i < p.length; i++) q[p[i]] = i; return q; };
+    const uniq = new Map();
+    for (const m of wingMacros) { const k = m.perm.join(','); if (!uniq.has(k) || uniq.get(k).steps.length > m.steps.length) uniq.set(k, m); }
+    const macros = [...uniq.values()];
+    const minv = macros.map(m => inv(m.perm));
+    const invIdx = minv.map(q => { const k = q.join(','); return macros.findIndex(m => m.perm.join(',') === k); });
+    const goal = Uint8Array.from(wingRef.orbitList.map(o => o.f));
+    const wid = wingRef.orbitList.map(o => o.pos.map(v => Math.min(3, Math.floor((v + 1) * 2))).join(','));
+    const wingIds = [...new Set(wid)];
+    const sw = wid.map(k => wingIds.indexOf(k));
+    const movedWings = c => { const m = new Set(); for (let k = 0; k < c.length; k++) if (c[k] !== k) m.add(sw[k]); return m; };
+    const lib = new Map();
+    for (let i = 0; i < macros.length; i++) for (let j = 0; j < macros.length; j++) {
+        const A = macros[i].perm, B = macros[j].perm;
+        const c = composePerm(composePerm(composePerm(A, B), minv[i]), minv[j]);
+        if (movedWings(c).size === 3) { const k = c.join(','); if (!lib.has(k)) lib.set(k, { perm: c, word: [i, j, invIdx[i], invIdx[j]] }); } }
+    for (let round = 0; round < 2; round++) for (const e of [...lib.values()]) for (let m = 0; m < macros.length; m++) {
+        const c = composePerm(composePerm(macros[m].perm, e.perm), minv[m]); const k = c.join(',');
+        if (!lib.has(k)) lib.set(k, { perm: c, word: [m, ...e.word, invIdx[m]] }); }
+    const L = [...lib.values()];
+    L.forEach(e => { e.wings = movedWings(e.perm); e.moved = []; for (let x = 0; x < e.perm.length; x++) if (e.perm[x] !== x) e.moved.push(x); });
+    _wing = { macros, goal, sw, L, wingRef, wingRefPerm };
+    return _wing;
+}
+
+// ---------- Niklas center libraries (lazy) ----------
+function buildNiklasLibraryForCenterRef(N_ref, baseI, baseJ) {
+    const ref = buildOrbitStickers(N_ref, baseI, baseJ), macros = [];
+    for (let ax = 0; ax < 3; ax++) {
+        const slicesI = [{ refSl: baseI, side: 0 }, { refSl: N_ref - 1 - baseI, side: 1 }];
+        const slicesJ = (baseJ === N_ref - 1 - baseJ) ? [{ refSl: baseJ, side: 0 }] : [{ refSl: baseJ, side: 0 }, { refSl: N_ref - 1 - baseJ, side: 1 }];
+        const allInner = [...slicesI, ...slicesJ];
+        for (const sA of allInner) for (const sB of allInner) {
+            if (sA.refSl === sB.refSl) continue;
+            for (let fAx = 0; fAx < 3; fAx++) { if (fAx === ax) continue;
+                for (const fSide of [0, 1]) { const fRefSl = fSide === 0 ? 0 : (N_ref - 1);
+                    for (const fDir of [1, -1]) {
+                        const pF = ref.getMovePerm(fAx, fRefSl, fDir), pFInv = ref.getMovePerm(fAx, fRefSl, -fDir);
+                        const pA = ref.getMovePerm(ax, sA.refSl, 1), pAInv = ref.getMovePerm(ax, sA.refSl, -1);
+                        const pB = ref.getMovePerm(ax, sB.refSl, 1), pBInv = ref.getMovePerm(ax, sB.refSl, -1);
+                        let pNik = composePerm(pA, pF); pNik = composePerm(pNik, pB); pNik = composePerm(pNik, pFInv);
+                        pNik = composePerm(pNik, pAInv); pNik = composePerm(pNik, pF); pNik = composePerm(pNik, pBInv); pNik = composePerm(pNik, pFInv);
+                        let moved = 0; for (let u = 0; u < 24; u++) if (pNik[u] !== u) moved++;
+                        if (moved === 3) macros.push({ perm: pNik, ax, sA, sB, fAx, fSide, fDir }); } } } } }
+    const inv = pp => { const q = new Uint8Array(pp.length); for (let x = 0; x < pp.length; x++) q[pp[x]] = x; return q; };
+    const gens = [], slSet = [...new Set([0, N_ref - 1, baseI, N_ref - 1 - baseI, baseJ, N_ref - 1 - baseJ])];
+    for (let a = 0; a < 3; a++) for (const sl of slSet) for (const d of [1, -1]) { const pp = ref.getMovePerm(a, sl, d);
+        gens.push({ perm: pp, pinv: inv(pp), step: { axis: a, refSl: sl, dir: d }, back: { axis: a, refSl: sl, dir: -d } }); }
+    const table = new Map();
+    for (const m of macros) { const k = m.perm.join(','); if (table.has(k)) continue;
+        const sA = m.sA.refSl, sB = m.sB.refSl, fSl = m.fSide === 0 ? 0 : N_ref - 1;
+        table.set(k, { perm: m.perm, steps: [
+            { axis: m.ax, refSl: sA, dir: 1 }, { axis: m.fAx, refSl: fSl, dir: m.fDir },
+            { axis: m.ax, refSl: sB, dir: 1 }, { axis: m.fAx, refSl: fSl, dir: -m.fDir },
+            { axis: m.ax, refSl: sA, dir: -1 }, { axis: m.fAx, refSl: fSl, dir: m.fDir },
+            { axis: m.ax, refSl: sB, dir: -1 }, { axis: m.fAx, refSl: fSl, dir: -m.fDir } ] }); }
+    for (let round = 0; round < 4; round++) for (const e of [...table.values()]) for (const g of gens) {
+        const c = composePerm(composePerm(g.perm, e.perm), g.pinv), k = c.join(',');
+        if (!table.has(k)) table.set(k, { perm: c, steps: [g.step, ...e.steps, g.back] }); }
+    const entries = [...table.values()];
+    entries.forEach(e => { e.moved = []; for (let x = 0; x < e.perm.length; x++) if (e.perm[x] !== x) e.moved.push(x); });
+    return { ref, macros, entries, N_ref };
+}
+const _nik = {};
+const NIK_SPEC = { diag: [4, 1, 1], obliq: [6, 1, 2], cross: [5, 1, 2] };
+const getNiklas = type => _nik[type] || (_nik[type] = buildNiklasLibraryForCenterRef(...NIK_SPEC[type]));
+// Which libraries a cube of size N needs
+function libsNeeded(N) { const half = N >> 1, need = [];
+    if (N < 4) return need;
+    need.push('wing'); if (half >= 2) need.push('diag'); if (half >= 3) need.push('obliq'); if (N % 2 === 1 && half >= 2) need.push('cross'); return need; }
+async function ensureLibs(N, yieldFn) {
+    yieldFn = yieldFn || tickYield;
+    if (N === 3 || (N > 3 && N % 2 === 1)) { if (!K3.ready()) await K3.prepAsync(yieldFn); }
+    for (const l of libsNeeded(N)) { if (l === 'wing') getWingTable(); else getNiklas(l); await yieldFn(); }
+}
+
+// Greedy 3-cycle search inside a 24-sticker center orbit. Returns array of library entries or null (explicit failure).
+function solveCenter24(startState, lib, faceGoal, maxSteps) {
+    const goal = Uint8Array.from(lib.ref.orbitList.map(o => faceGoal[o.f])), E = lib.entries, n = 24;
+    const cnt = st => { let c = 0; for (let x = 0; x < n; x++) if (st[x] === goal[x]) c++; return c; };
+    const score = (st, pp) => { let c = 0; for (let x = 0; x < n; x++) if (st[pp[x]] === goal[x]) c++; return c; };
+    const chosen = []; let state = startState.slice();
+    for (let step = 0; step < (maxSteps || 120); step++) {
+        const cur = cnt(state);
+        if (cur === n) return chosen;
+        let best = 0, bi = -1;
+        for (let k = 0; k < E.length; k++) { const e = E[k], mv = e.moved; let d = 0;
+            for (let q = 0; q < mv.length; q++) { const x = mv[q]; d += (state[e.perm[x]] === goal[x] ? 1 : 0) - (state[x] === goal[x] ? 1 : 0); }
+            if (d > best) { best = d; bi = k; } }
+        if (bi >= 0) { chosen.push(E[bi]); state = applyPerm(state, E[bi].perm); continue; }
+        const bad = new Set(); for (let x = 0; x < n; x++) if (state[x] !== goal[x]) bad.add(x);
+        const opts = E.filter(e => e.moved.every(x => bad.has(x)));
+        let seq = null;
+        for (let a1 = 0; a1 < opts.length && !seq; a1++) { const s1 = applyPerm(state, opts[a1].perm);
+            for (let b1 = 0; b1 < opts.length; b1++) if (score(s1, opts[b1].perm) > cur) { seq = [opts[a1], opts[b1]]; break; } }
+        if (!seq && opts.length <= 200) {
+            for (let a1 = 0; a1 < opts.length && !seq; a1++) { const s1 = applyPerm(state, opts[a1].perm);
+                for (let b1 = 0; b1 < opts.length && !seq; b1++) { const s2 = applyPerm(s1, opts[b1].perm);
+                    for (let c1 = 0; c1 < opts.length; c1++) if (score(s2, opts[c1].perm) > cur) { seq = [opts[a1], opts[b1], opts[c1]]; break; } } } }
+        if (!seq) return null;
+        for (const e of seq) { chosen.push(e); state = applyPerm(state, e.perm); } }
+    return null;
+}
+
+// Wing-orbit solver (48 stickers). Returns array of macro-like {steps} or null.
+function solveWingOrbitState(curState, faceGoal) {
+    const WM = getWingTable(), n = curState.length, goal = WM.goal.map(f => faceGoal[f]), M = WM.macros, L = WM.L;
+    const cnt = st => { let c = 0; for (let i = 0; i < n; i++) if (st[i] === goal[i]) c++; return c; };
+    const score = (st, p) => { let c = 0; for (let i = 0; i < n; i++) if (st[p[i]] === goal[i]) c++; return c; };
+    function stallFix(st, cur) {
+        const U = new Set(); for (let i = 0; i < n; i++) if (st[i] !== goal[i]) U.add(WM.sw[i]);
+        const opts = [];
+        L.forEach((e, k) => { for (const w of e.wings) if (!U.has(w)) return; opts.push({ perm: e.perm, kind: 'c', idx: k }); });
+        M.forEach((m, k) => opts.push({ perm: m.perm, kind: 'm', idx: k }));
+        const O = opts.length;
+        for (let a1 = 0; a1 < O; a1++) if (score(st, opts[a1].perm) > cur) return [opts[a1]];
+        for (let a1 = 0; a1 < O; a1++) { const s1 = applyPerm(st, opts[a1].perm);
+            for (let b1 = 0; b1 < O; b1++) if (score(s1, opts[b1].perm) > cur) return [opts[a1], opts[b1]]; }
+        if (O <= 170) for (let a1 = 0; a1 < O; a1++) { const s1 = applyPerm(st, opts[a1].perm);
+            for (let b1 = 0; b1 < O; b1++) { const s2 = applyPerm(s1, opts[b1].perm);
+                for (let c1 = 0; c1 < O; c1++) if (score(s2, opts[c1].perm) > cur) return [opts[a1], opts[b1], opts[c1]]; } }
+        return null; }
+    function solveEven(start) {
+        const out = []; let st = start;
+        for (let it = 0; it < 80; it++) {
+            const cur = cnt(st); if (cur === n) return out;
+            let best = 0, bi = -1;
+            for (let k = 0; k < L.length; k++) { const e = L[k], mv = e.moved; let d = 0;
+                for (let q = 0; q < mv.length; q++) { const x = mv[q]; d += (st[e.perm[x]] === goal[x] ? 1 : 0) - (st[x] === goal[x] ? 1 : 0); }
+                if (d > best) { best = d; bi = k; } }
+            if (bi >= 0) { out.push({ kind: 'c', idx: bi }); st = applyPerm(st, L[bi].perm); continue; }
+            const fx = stallFix(st, cur); if (!fx) return null;
+            for (const o of fx) { out.push({ kind: o.kind, idx: o.idx }); st = applyPerm(st, o.perm); } }
+        return null; }
+    let plan = solveEven(curState);
+    if (!plan) for (let m = 0; m < M.length && !plan; m++) { const r = solveEven(applyPerm(curState, M[m].perm)); if (r) plan = [{ kind: 'm', idx: m }, ...r]; }
+    if (!plan) return null;
+    return plan.map(o => o.kind === 'm' ? M[o.idx] : { steps: L[o.idx].word.flatMap(mi => M[mi].steps) });
+}
+
+// ---------- grid validation ----------
+function validateGrid(N, grid) {
+    if (!grid || grid.length !== 6 * N * N) return 'Ukuran grid state tidak sesuai.';
+    const cnt = [0,0,0,0,0,0];
+    for (let i = 0; i < grid.length; i++) { const v = grid[i]; if (v > 5) return 'Terdapat stiker dengan warna tak dikenal (pembacaan piksel GPU tidak valid).'; cnt[v]++; }
+    for (let c = 0; c < 6; c++) if (cnt[c] !== N * N) return `Jumlah stiker warna ${c} = ${cnt[c]} (seharusnya ${N * N}); state tidak valid.`;
+    return null;
+}
+function gridSolved(N, g) { const NN = N * N; for (let f = 0; f < 6; f++) { const c = g[f * NN]; for (let k = 1; k < NN; k++) if (g[f * NN + k] !== c) return false; } return true; }
+
+// ---------- fast permutation-based grid mover (verification of solution queues) ----------
+function makeFastGrid(N) {
+    const M = N - 1, NN = N * N;
+    const posOf = (f, i, j) => { const X = 2*i+1-N, Y = 2*j+1-N;
+        switch (f) { case 0: return [[M,Y,-X],[1,0,0]]; case 1: return [[-M,Y,X],[-1,0,0]]; case 2: return [[X,M,-Y],[0,1,0]];
+            case 3: return [[X,-M,Y],[0,-1,0]]; case 4: return [[X,Y,M],[0,0,1]]; default: return [[-X,Y,-M],[0,0,-1]]; } };
+    const idxOf = (p, n) => { let f, cx, cy;
+        if (n[0] === 1) { f = 0; cx = -p[2]; cy = p[1]; } else if (n[0] === -1) { f = 1; cx = p[2]; cy = p[1]; }
+        else if (n[1] === 1) { f = 2; cx = p[0]; cy = -p[2]; } else if (n[1] === -1) { f = 3; cx = p[0]; cy = p[2]; }
+        else if (n[2] === 1) { f = 4; cx = p[0]; cy = p[1]; } else { f = 5; cx = -p[0]; cy = p[1]; }
+        return f * NN + ((cy + M) >> 1) * N + ((cx + M) >> 1); };
+    const rot = (v, a, s) => a === 0 ? [v[0], -s*v[2], s*v[1]] : a === 1 ? [s*v[2], v[1], -s*v[0]] : [-s*v[1], s*v[0], v[2]];
+    const cache = new Map();
+    function layerPerm(a, s, sd) {
+        const key = (a * 512 + s) * 2 + (sd > 0 ? 1 : 0), hit = cache.get(key); if (hit) return hit;
+        const target = 2 * s - M, src = [], dst = [];
+        const add = (f, i, j) => { const [p, n] = posOf(f, i, j); src.push(f * NN + j * N + i); dst.push(idxOf(rot(p, a, sd), rot(n, a, sd))); };
+        for (let f = 0; f < 6; f++) {
+            if ((f >> 1) === a) { if (((f & 1) === 0) ? target === M : target === -M) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) add(f, i, j); continue; }
+            const p00 = posOf(f, 0, 0)[0], p10 = posOf(f, N > 1 ? 1 : 0, 0)[0], p01 = posOf(f, 0, N > 1 ? 1 : 0)[0];
+            const di = p10[a] - p00[a], dj = p01[a] - p00[a];
+            if (di !== 0) { const i = ((target * Math.sign(di)) + M) >> 1; for (let j = 0; j < N; j++) add(f, i, j); }
+            else { const j = ((target * Math.sign(dj)) + M) >> 1; for (let i = 0; i < N; i++) add(f, i, j); } }
+        const r = { src: Int32Array.from(src), dst: Int32Array.from(dst) }; cache.set(key, r); return r; }
+    let tmp = new Uint8Array(4 * N + 8);
+    function applyLayer(g, a, s, sd) { const { src, dst } = layerPerm(a, s, sd), n = src.length;
+        if (tmp.length < n) tmp = new Uint8Array(n);
+        for (let k = 0; k < n; k++) tmp[k] = g[src[k]];
+        for (let k = 0; k < n; k++) g[dst[k]] = tmp[k]; }
+    return {
+        apply(g, mv) { const sd = mv.dir > 0 ? 1 : -1; for (let s = mv.sliceStart; s <= mv.sliceEnd; s++) applyLayer(g, mv.axis, s, sd); },
+        applyCode(g, c) { const a = c & 3, sd = (c >> 2) & 1 ? 1 : -1, s0 = (c >> 3) & 511, s1 = (c >> 12) & 511; for (let s = s0; s <= s1; s++) applyLayer(g, a, s, sd); },
+        solvedGrid() { const g = new Uint8Array(6 * NN); for (let f = 0; f < 6; f++) g.fill(f, f * NN, f * NN + NN); return g; },
+        cacheSize: () => cache.size };
+}
+// Rough operation count for verifying a queue (so the UI can decide whether to verify before animating)
+function verifyCost(N, buf) { let c = 0; for (let i = 0; i < buf.n; i++) { const x = buf.a[i], s0 = (x >> 3) & 511, s1 = (x >> 12) & 511; c += (s1 - s0 + 1) * 4 * N + ((s0 === 0 || s1 === N - 1) ? N * N : 0); } return c; }
+async function verifyQueue(N, grid, buf, ctl) {
+    ctl = ctl || {}; const fg = makeFastGrid(N), g = Uint8Array.from(grid); let t0 = nowMs();
+    for (let i = 0; i < buf.n; i++) { fg.applyCode(g, buf.a[i]);
+        if ((i & 255) === 0 && nowMs() - t0 > 12) { if (ctl.yield) await ctl.yield(); else await tickYield(); t0 = nowMs(); if (ctl.cancelled && ctl.cancelled()) return { cancelled: true }; } }
+    return { solved: gridSolved(N, g) };
+}
+
+// ---------- support tiers (filled in from measured benchmarks; see report) ----------
+const SUPPORT = { verifiedMax: 50, limitedMax: 200 };
+function supportInfo(N) {
+    if (N <= SUPPORT.verifiedMax) return { level: 'verified', label: 'Terverifikasi uji', note: `Lolos ribuan uji acak terhadap model referensi independen (≤ ${SUPPORT.verifiedMax}×${SUPPORT.verifiedMax}).` };
+    if (N <= SUPPORT.limitedMax) return { level: 'limited', label: 'Diuji terbatas', note: `Solver terbukti benar pada sampel kecil (1–2 seed) hingga ${SUPPORT.limitedMax}×${SUPPORT.limitedMax}; hasil tetap divalidasi dari piksel GPU.` };
+    return { level: 'experimental', label: 'Eksperimental', note: 'Di atas 200×200 hanya waktu hitung/jumlah gerakan yang terukur; kebenaran penuh belum diverifikasi. Validasi akhir dari piksel GPU; animasi jutaan gerakan sangat lama. Bisa dibatalkan.' };
+}
+
+// ---------- main entry: solve a grid ----------
+const CANCEL = { cancelled: true };
+class SolveFail extends Error { constructor(phase, phaseName, msg) { super(msg); this.phase = phase; this.phaseName = phaseName; } }
+const PHASES_S2 = [{ name: 'Rumus BFS Optimal 2×2', tag: 'BFS' }];
+const PHASES_K3 = [{ name: 'Kociemba Fase 1 (G0 → G1)', tag: 'Kociemba F1' }, { name: 'Kociemba Fase 2 (G1 → Solved)', tag: 'Kociemba F2' }];
+const PHASES_BIG = [{ name: 'Fase 1: Kerangka Sudut BFS', tag: 'Sudut' }, { name: 'Fase 1: Kerangka 3×3 (Kociemba)', tag: 'Kociemba' },
+    { name: 'Fase 2: Rumus Wing-Edge Pairing', tag: 'Wing-Pair' }, { name: 'Fase 3: Komutator Pusat Niklas', tag: 'Niklas' }];
+
+async function solveGrid(N, grid, ctl) {
+    ctl = ctl || {};
+    const cancelled = ctl.cancelled || (() => false), yieldFn = ctl.yield || tickYield, progress = ctl.progress || (() => {});
+    const t0 = nowMs(); let lastY = nowMs();
+    const tick = async (force) => { if (force || nowMs() - lastY > 12) { await yieldFn(); lastY = nowMs(); } if (cancelled()) throw CANCEL; };
+    const buf = new MoveBuf(1024); let phases = null;
+    const info = { N, timings: {} };
+    try {
+        if (!Number.isInteger(N) || N < 2 || N > MAX_N) throw new SolveFail(0, 'Validasi', `Ukuran ${N} di luar rentang 2–${MAX_N}.`);
+        const bad = validateGrid(N, grid); if (bad) throw new SolveFail(0, 'Validasi state', bad);
+        if (gridSolved(N, grid)) { return { ok: true, N, moves: buf, phases: [], method: 'sudah selesai', verified: 'trivial', stats: { ms: nowMs() - t0, moves: 0 } }; }
+        if (N === 2) {
+            phases = PHASES_S2; progress(10, 'Mencari solusi BFS 2×2...', 0); await tick(true);
+            const r = S2.solve(grid); if (r.error) throw new SolveFail(1, phases[0].name, r.error);
+            for (const m of r.moves) { const ax = (m / 3) | 0, k = m % 3; buf.push(ax, 1, 1, k === 1 ? -1 : 1, 0); if (k === 2) buf.push(ax, 1, 1, 1, 0); }
+            info.method = 'BFS dua arah 2×2';
+        } else if (N === 3) {
+            phases = PHASES_K3; progress(10, 'Menyiapkan tabel Kociemba...', 0);
+            if (!K3.ready()) await K3.prepAsync(async () => { await tick(true); });
+            await tick(true);
+            const r = K3.solve(Array.from(grid), false); if (r.error) throw new SolveFail(1, 'Kociemba', r.error);
+            r.moves.forEach((m, idx) => { const fc = (m / 3) | 0, k = m % 3, ax = fc >> 1, sl = (fc & 1) ? 0 : 2, ph = idx < r.p1 ? 0 : 1;
+                buf.push(ax, sl, sl, k === 1 ? -1 : 1, ph); if (k === 2) buf.push(ax, sl, sl, 1, ph); });
+            info.method = 'Kociemba 2-fase'; info.kociembaP1 = r.p1; info.kociembaP2 = r.moves.length - r.p1;
+        } else {
+            phases = PHASES_BIG; info.method = `Orbit ${N}×${N} (sudut + wing + komutator Niklas)`;
+            const half = N >> 1, mid = half;
+            const faceGoal = (N % 2 === 1) ? Array.from({ length: 6 }, (_, f) => grid[f * N * N + half * N + half]) : [0, 1, 2, 3, 4, 5];
+            if (N % 2 === 1 && new Set(faceGoal).size !== 6) throw new SolveFail(1, 'Fase 1', 'Warna pusat sisi tidak unik (state tidak valid).');
+            progress(2, 'Menyiapkan pustaka rumus (sekali saja)...', 0);
+            const tl = nowMs();
+            if (N % 2 === 1 && !K3.ready()) await K3.prepAsync(async () => { await tick(true); });
+            for (const l of libsNeeded(N)) { if (l === 'wing') getWingTable(); else getNiklas(l); await tick(true); }
+            info.timings.libsMs = Math.round(nowMs() - tl);
+            const globalOuter = []; // {axis, slice, dir}
+            // ---- Phase 1 ----
+            progress(5, 'Fase 1: Menyelesaikan Kerangka Sudut & Luar...', 0);
+            if (N % 2 === 1) {
+                const mapCoord = [0, mid, N - 1];
+                const state3 = Array.from(K3.st.map(q => grid[q.f * N * N + mapCoord[q.j] * N + mapCoord[q.i]]));
+                const r = K3.solve(state3, false); if (r.error) throw new SolveFail(1, PHASES_BIG[1].name, r.error);
+                for (const m of r.moves) { const fc = (m / 3) | 0, k = m % 3, ax = fc >> 1, sl = (fc & 1) ? 0 : (N - 1), reps = k === 2 ? 2 : 1, dir = k === 1 ? -1 : 1;
+                    for (let q = 0; q < reps; q++) { buf.push(ax, sl, sl, dir, 1); globalOuter.push({ axis: ax, slice: sl, dir }); } }
+            } else {
+                const { orbitList: cornerOrbit, getMovePerm: getCornerPerm } = buildOrbitStickers(N, 0, 0);
+                const cur = Uint8Array.from(cornerOrbit.map(o => grid[o.f * N * N + o.j * N + o.i]));
+                const defs = [];
+                for (let axis = 0; axis < 3; axis++) for (const slice of [0, N - 1]) for (const dir of [1, -1]) defs.push({ axis, slice, dir, perm: getCornerPerm(axis, slice, dir) });
+                const goalS = Uint8Array.from(cornerOrbit.map(o => o.f));
+                const key = a => String.fromCharCode.apply(null, a);
+                const kS = key(cur), kG = key(goalS);
+                if (kS !== kG) {
+                    const F = new Map([[kS, null]]), B = new Map([[kG, null]]);
+                    let fr = [cur], br = [goalS], meet = null;
+                    const expand = (list, Mp, O, back) => { const nx = [];
+                        for (const s of list) { const ks = key(s);
+                            for (let m = 0; m < defs.length; m++) { const t = applyPerm(s, defs[m].perm), kt = key(t);
+                                if (Mp.has(kt)) continue; Mp.set(kt, { p: ks, m: back ? (m ^ 1) : m }); nx.push(t);
+                                if (O.has(kt)) { meet = kt; return nx; } } }
+                        return nx; };
+                    for (let it = 0; it < 14 && meet === null; it++) { if (fr.length <= br.length) fr = expand(fr, F, B, false); else br = expand(br, B, F, true); await tick(); }
+                    if (meet === null) throw new SolveFail(1, PHASES_BIG[0].name, 'BFS kerangka sudut tidak menemukan solusi dalam kedalaman 14 (state sudut tidak valid?).');
+                    const path = [];
+                    for (let k = meet; F.get(k); k = F.get(k).p) path.push(F.get(k).m);
+                    path.reverse();
+                    for (let k = meet; B.get(k); k = B.get(k).p) path.push(B.get(k).m);
+                    for (const m of path) { const d = defs[m]; buf.push(d.axis, d.slice, d.slice, d.dir, 0); globalOuter.push({ axis: d.axis, slice: d.slice, dir: d.dir }); }
+                }
+            }
+            // ---- Phase 2: wings ----
+            const WM = getWingTable(), wingDepthMoves = new Map(); const tw = nowMs();
+            for (let k = 1; k < half; k++) {
+                await tick();
+                const wSet = buildStickerSet(N, [[k, 0], [N - 1 - k, 0]]);
+                let wState = Uint8Array.from(wSet.orbitList.map(o => grid[o.f * N * N + o.j * N + o.i]));
+                for (const mv of globalOuter) wState = applyPerm(wState, WM.wingRefPerm(mv.axis, mv.slice === 0 ? 0 : 3, mv.dir));
+                let solved = true; for (let i = 0; i < wState.length; i++) if (wState[i] !== faceGoal[WM.wingRef.orbitList[i].f]) { solved = false; break; }
+                if (!solved) {
+                    const macros = solveWingOrbitState(wState, faceGoal);
+                    if (!macros) throw new SolveFail(2, `Fase 2: Wing-Edge Pairing (orbit ${k})`, `Solver wing-edge gagal menemukan urutan untuk orbit kedalaman ${k}.`);
+                    const dm = [];
+                    for (const mac of macros) for (const stp of mac.steps) {
+                        const sl = stp.isInner ? (stp.side === 0 ? k : (N - 1 - k)) : (stp.side === 0 ? 0 : (N - 1));
+                        buf.push(stp.axis, sl, sl, stp.dir, 2); dm.push({ axis: stp.axis, slice: sl, dir: stp.dir }); }
+                    wingDepthMoves.set(k, dm);
+                }
+                if (k % 4 === 0) progress(10 + Math.round((k / Math.max(1, half)) * 30), `Fase 2: Wing-Edge Pairing (${k}/${half - 1})`, buf.n);
+            }
+            info.timings.wingMs = Math.round(nowMs() - tw);
+            // ---- Phase 3: centers ----
+            const orbits = [];
+            for (let i = 1; i < half; i++) { for (let j = 1; j < half; j++) orbits.push({ i, j, type: i === j ? 'diag' : 'obliq' }); if (N % 2 === 1) orbits.push({ i, j: half, type: 'cross' }); }
+            const memo = new Map(); let memoHits = 0, solvedOrbits = 0; const tc = nowMs();
+            const permCache = new Map();   // (type, axis, refSl, dir) -> perm, avoids rebuilding ref perms for every orbit
+            const applyToCenterFast = (cState, mv, i, j, lib, refI, refJ) => { const s = mv.slice, Nr = lib.N_ref; let refSl = -1;
+                if (s === 0) refSl = 0; else if (s === N - 1) refSl = Nr - 1; else if (s === i) refSl = refI; else if (s === N - 1 - i) refSl = Nr - 1 - refI;
+                else if (s === j) refSl = refJ; else if (s === N - 1 - j) refSl = Nr - 1 - refJ;
+                if (refSl < 0) return cState;
+                const ck = ((Nr * 8 + mv.axis) * 8 + refSl) * 2 + (mv.dir > 0 ? 1 : 0); let p = permCache.get(ck);
+                if (!p) { p = lib.ref.getMovePerm(mv.axis, refSl, mv.dir); permCache.set(ck, p); }
+                return applyPerm(cState, p); };
+            for (let cIdx = 0; cIdx < orbits.length; cIdx++) {
+                await tick();
+                const { i, j, type } = orbits[cIdx], lib = getNiklas(type), Nr = lib.N_ref, refI = 1, refJ = type === 'diag' ? 1 : 2;
+                const coords = [[i, j], [N - 1 - j, i], [N - 1 - i, N - 1 - j], [j, N - 1 - i]];
+                let cState = new Uint8Array(24);
+                for (let f = 0; f < 6; f++) for (let c = 0; c < 4; c++) { const [ci, cj] = coords[c]; cState[f * 4 + c] = grid[f * N * N + cj * N + ci]; }
+                for (const mv of globalOuter) cState = applyToCenterFast(cState, mv, i, j, lib, refI, refJ);
+                for (const kk of (i === j ? [i] : [Math.min(i, j), Math.max(i, j)])) { const dm = wingDepthMoves.get(kk); if (dm) for (const mv of dm) cState = applyToCenterFast(cState, mv, i, j, lib, refI, refJ); }
+                let ok = true; for (let u = 0; u < 24; u++) if (cState[u] !== faceGoal[lib.ref.orbitList[u].f]) { ok = false; break; }
+                if (!ok) {
+                    const mk = type + String.fromCharCode.apply(null, cState); let seq = memo.get(mk);
+                    if (seq === undefined) { seq = solveCenter24(cState, lib, faceGoal); if (memo.size < 60000) memo.set(mk, seq); } else memoHits++;
+                    if (!seq) throw new SolveFail(3, `Fase 3: Komutator Pusat Niklas (${i},${j})`, `Pencarian komutator gagal untuk orbit pusat (${i},${j}) tipe ${type}: tidak ada peningkatan state.`);
+                    const mapSl = r => r === 0 ? 0 : r === Nr - 1 ? N - 1 : r === refI ? i : r === Nr - 1 - refI ? N - 1 - i : r === refJ ? j : N - 1 - j;
+                    for (const ent of seq) for (const stp of ent.steps) { const sl = mapSl(stp.refSl); buf.push(stp.axis, sl, sl, stp.dir, 3); }
+                } else solvedOrbits++;
+                if (cIdx % 64 === 0) progress(40 + Math.round(((cIdx + 1) / orbits.length) * 55), `Fase 3: Komutator Pusat Niklas (${cIdx + 1}/${orbits.length})`, buf.n);
+            }
+            info.timings.centerMs = Math.round(nowMs() - tc); info.centerOrbits = orbits.length; info.centerMemoHits = memoHits; info.centerAlreadySolved = solvedOrbits;
+        }
+        // ---- pre-verification of the generated queue (permutation model), when affordable ----
+        let verified = 'dilewati (biaya terlalu besar; verifikasi akhir via piksel GPU)';
+        const budget = ctl.verifyBudget == null ? 1.2e9 : ctl.verifyBudget;
+        if (budget > 0 && verifyCost(N, buf) <= budget) {
+            progress(97, 'Memverifikasi antrean solusi pada salinan state...', buf.n);
+            const v = await verifyQueue(N, grid, buf, { yield: yieldFn, cancelled });
+            if (v.cancelled) throw CANCEL;
+            if (!v.solved) throw new SolveFail(9, 'Verifikasi antrean', 'Antrean solusi TIDAK menyelesaikan salinan state saat disimulasikan; antrean dibuang.');
+            verified = true;
+        }
+        progress(100, 'Rumus selesai disusun', buf.n);
+        info.ms = Math.round(nowMs() - t0); info.moves = buf.n;
+        return { ok: true, N, moves: buf, phases, method: info.method, verified, stats: info };
+    } catch (e) {
+        if (e === CANCEL) return { ok: false, cancelled: true, N, error: 'Dibatalkan', phase: -1, movesGenerated: buf.n };
+        if (e instanceof SolveFail) return { ok: false, N, phase: e.phase, phaseName: e.phaseName, error: e.message, movesGenerated: buf.n };
+        return { ok: false, N, phase: -2, phaseName: 'Internal', error: 'Kesalahan internal solver: ' + (e && e.message || e), movesGenerated: buf.n };
+    }
+}
+
+return { NORM, PALETTE, MAX_N, makeRng, moveToNotation, generateMove, MoveBuf, makeGeom, S2, K3, buildStickerSet, getWingTable, getNiklas, libsNeeded, ensureLibs,
+    solveCenter24, solveWingOrbitState, validateGrid, gridSolved, makeFastGrid, verifyCost, verifyQueue, supportInfo, SUPPORT, solveGrid, applyPerm, composePerm };
+})();
+/* ===== END HC CORE ===== */
+if (typeof module !== 'undefined') module.exports = HC;
+
         window.onload = function () {
+            const fatalEl = document.getElementById('fatal-banner');
+            const fatal = (m) => { if (fatalEl) { fatalEl.textContent = m; fatalEl.classList.remove('hidden'); } console.error('[HYPERCUBE]', m); };
+            if (typeof THREE === 'undefined' || window.__threeFailed) { fatal('Gagal memuat three.js dari CDN (periksa koneksi internet). Aplikasi 3D tidak dapat berjalan tanpa pustaka ini.'); return; }
             const container = document.getElementById('canvas-container');
-            const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            let renderer;
+            try { renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }); }
+            catch (err) { fatal('WebGL tidak tersedia/gagal diinisialisasi di perangkat ini: ' + (err && err.message || err)); return; }
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.autoClear = false;
@@ -756,10 +1445,26 @@
             previewScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), previewMat));
 
             let cubeSize = 3, fboA = null, fboB = null, currentFbo = null, nextFbo = null;
-            let scrambleCounter = 0, moveQueue = [], activeMove = null;
+            let scrambleCounter = 0, activeMove = null;
             let currentMode = 'SOLVED', isPaused = false, showFboPreview = true;
-            let autoLoopTimer = null, isComputingFormula = false, cancelComputeRequested = false;
+            let autoLoopTimer = null, isComputingFormula = false;
             let turnsPerSecond = 3.0;
+            let opToken = 0;            // naik setiap ada aksi yang membatalkan pekerjaan async yang sedang berjalan
+            let stateVersion = 0;       // naik setiap state GPU berubah (commit / alokasi / reset)
+            let contextLost = false, allocCounter = 0;
+            const maxTexSize = renderer.capabilities.maxTextureSize || 4096;
+            const MAX_N_GPU = Math.max(2, Math.min(HC.MAX_N, Math.floor(maxTexSize / 4)));
+
+            // ---- antrean gerakan terkompresi (1 Int32 / gerakan, head-index => O(1) dequeue) ----
+            const Q = { a: new Int32Array(0), h: 0, n: 0, phases: [], kind: 'none', total: 0 };
+            function qClear() { Q.a = new Int32Array(0); Q.h = 0; Q.n = 0; Q.phases = []; Q.kind = 'none'; Q.total = 0; }
+            const qRemaining = () => Q.n - Q.h;
+            function qSet(buf, phases, kind) { Q.a = buf.trim(); Q.h = 0; Q.n = buf.n; Q.phases = phases; Q.kind = kind; Q.total = buf.n; }
+            function qStartScramble() { Q.a = new Int32Array(64); Q.h = 0; Q.n = 0; Q.kind = 'scramble'; Q.total = 0; Q.phases = [{ name: 'Mengacak Rubik', tag: 'Acak' }, { name: 'Langkah Acak +1', tag: '+1 Twist' }]; }
+            function qPushScramble(mv, ph) {
+                if (Q.n === Q.a.length) { const b = new Int32Array(Math.max(64, Q.a.length * 2)); b.set(Q.a); Q.a = b; }
+                Q.a[Q.n++] = mv.axis | ((mv.dir > 0 ? 1 : 0) << 2) | (mv.sliceStart << 3) | (mv.sliceEnd << 12) | (ph << 21); Q.total = Q.n; }
+            function qNext() { if (Q.h >= Q.n) return null; const d = HC.MoveBuf.decode(Q.a[Q.h]); d.index = Q.h++; d.progress = 0; d.isSolvingMove = Q.kind === 'solve'; return d; }
 
             function syncFboTexturesToMaterials() {
                 matLower.uniforms.uStateTex.value = matMid.uniforms.uStateTex.value = matUpper.uniforms.uStateTex.value = currentFbo.texture;
@@ -767,18 +1472,31 @@
                 previewMat.uniforms.uTex.value = currentFbo.texture;
             }
 
+            function renderInitialState(target) {
+                fboQuadMesh.material = initFboMaterial;
+                renderer.setRenderTarget(target);
+                renderer.render(fboQuadScene, fboOrthoCam);
+                renderer.setRenderTarget(null);
+            }
+
+            // Alokasi framebuffer hanya bila ukuran benar-benar berubah; reset ukuran sama memakai ulang target yang ada.
             function createPingPongFBOs(N) {
+                allocCounter++;
                 if (fboA) fboA.dispose();
                 if (fboB) fboB.dispose();
                 const params = { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false, stencilBuffer: false };
                 fboA = new THREE.WebGLRenderTarget(4 * N, 2 * N, params);
                 fboB = new THREE.WebGLRenderTarget(4 * N, 2 * N, params);
-                fboQuadMesh.material = initFboMaterial;
-                renderer.setRenderTarget(fboA);
-                renderer.render(fboQuadScene, fboOrthoCam);
-                renderer.setRenderTarget(null);
-                currentFbo = fboA;
-                nextFbo = fboB;
+                renderInitialState(fboA);
+                currentFbo = fboA; nextFbo = fboB;
+                stateVersion++;
+                syncFboTexturesToMaterials();
+                updateSliceGeometryUniforms(N, 0, 0, N - 1, 0.0);
+                updateTelemetryStatic(N);
+            }
+            function resetCubeFBO(N) {
+                renderInitialState(currentFbo);
+                stateVersion++;
                 syncFboTexturesToMaterials();
                 updateSliceGeometryUniforms(N, 0, 0, N - 1, 0.0);
                 updateTelemetryStatic(N);
@@ -796,29 +1514,8 @@
                 renderer.render(fboQuadScene, fboOrthoCam);
                 renderer.setRenderTarget(null);
                 const temp = currentFbo; currentFbo = nextFbo; nextFbo = temp;
+                stateVersion++;
                 syncFboTexturesToMaterials();
-            }
-
-            function moveToNotation(mv, N) {
-                const s = mv.sliceStart, e = mv.sliceEnd, isPos = (s + e) * 0.5 >= (N - 1) * 0.5;
-                const faceChar = mv.axis === 0 ? (isPos ? 'R' : 'L') : (mv.axis === 1 ? (isPos ? 'U' : 'D') : (isPos ? 'F' : 'B'));
-                const cwSign = isPos ? -1 : 1;
-                const suffix = (mv.dir === cwSign) ? "" : "'";
-                const d1 = isPos ? (N - 1 - e) + 1 : s + 1;
-                const d2 = isPos ? (N - 1 - s) + 1 : e + 1;
-                if (d1 === 1 && d2 === 1) return `${faceChar}${suffix}`;
-                if (d1 === 1) return `${d2 > 2 ? d2 : ''}${faceChar}w${suffix}`;
-                if (d1 === d2) return `${d1}${faceChar}${suffix}`;
-                return `${d1}-${d2}${faceChar}w${suffix}`;
-            }
-
-            function generateRandomMove(N, lastAxis = -1) {
-                let axis = Math.floor(Math.random() * 3);
-                if (axis === lastAxis && Math.random() < 0.65) axis = (axis + 1 + Math.floor(Math.random() * 2)) % 3;
-                let maxSpan = N >= 8 ? Math.max(1, Math.floor(N * (Math.random() < 0.7 ? 0.08 : 0.22))) : 1;
-                const span = Math.floor(Math.random() * maxSpan);
-                const sliceStart = Math.floor(Math.random() * (N - span));
-                return { axis, sliceStart, sliceEnd: Math.min(N - 1, sliceStart + span), dir: Math.random() < 0.5 ? 1 : -1 };
             }
 
             // UI Elements
@@ -860,61 +1557,69 @@
             btnCloseDrawer.addEventListener('click', () => toggleMobileDrawer(false));
             if (mobBtnSizeQuick) mobBtnSizeQuick.addEventListener('click', () => toggleMobileDrawer());
             btnFitCam.addEventListener('click', () => { orbit.userZoomFactor = 1.0; orbit.resetting = true; computeResponsiveCameraFraming(); });
-            btnCancelCompute.addEventListener('click', () => { cancelComputeRequested = true; });
 
             const formatNumberID = num => num.toLocaleString('id-ID');
 
+            const hudSupport = document.getElementById('support-note');
+            const fatalBanner = document.getElementById('fatal-banner');
+            function showFatal(msg) { if (fatalBanner) { fatalBanner.textContent = msg; fatalBanner.classList.remove('hidden'); } }
+            function hideFatal() { if (fatalBanner) fatalBanner.classList.add('hidden'); }
+
+            // Telemetri: FPS & waktu frame DIUKUR dari frame render; memori tekstur hanya ESTIMASI dari resolusi x format (bukan VRAM hardware).
             function updateTelemetryStatic(N) {
                 const totalStickers = 6 * N * N;
                 hudStickers.textContent = noteStickers.textContent = formatNumberID(totalStickers);
-                hudVram.textContent = `${((2 * (4 * N) * (2 * N) * 4) / (1024 * 1024)).toFixed(2)} MB`;
+                const estMB = (2 * (4 * N) * (2 * N) * 4) / (1024 * 1024);
+                hudVram.textContent = `≈ ${estMB < 10 ? estMB.toFixed(2) : estMB.toFixed(1)} MB`;
                 fboResLabel.textContent = `${4 * N}×${2 * N} px`;
-                hudMethod.textContent = N === 2 ? 'BFS Optimal 2×2' : (N === 3 ? 'Kociemba 2-Fase' : `Orbit ${N}×${N} + Niklas`);
+                hudMethod.textContent = N === 2 ? 'BFS 2×2 (CPU)' : (N === 3 ? 'Kociemba 2-Fase (CPU)' : `Orbit ${N}×${N} + Niklas (CPU)`);
+                if (hudSupport) {
+                    const s = HC.supportInfo(N);
+                    hudSupport.textContent = `Dukungan solver ${N}×${N}: ${s.label}. ${s.note}`;
+                    hudSupport.className = 'text-[10px] leading-relaxed ' + (s.level === 'verified' ? 'text-emerald-300/90' : (s.level === 'limited' ? 'text-sky-300/90' : 'text-amber-300/90'));
+                }
             }
 
             function updateCountersUI() {
-                queueCountEl.textContent = formatNumberID(moveQueue.length + (activeMove ? 1 : 0));
+                queueCountEl.textContent = formatNumberID(qRemaining() + (activeMove ? 1 : 0));
                 historyCountEl.textContent = formatNumberID(scrambleCounter);
             }
 
+            const setDisabled = (list, v) => list.forEach(el => { if (el) el.disabled = v; });
+            const STATUS_STYLE = {
+                SOLVED: ['TERSELESAIKAN', 'text-emerald-400', 'bg-emerald-400 animate-pulse'],
+                SCRAMBLING: ['MENGACAK...', 'text-amber-400', 'bg-amber-400 animate-ping'],
+                SCRAMBLED: ['TERACAK (SIAP RUMUS)', 'text-sky-400', 'bg-sky-400 animate-pulse'],
+                COMPUTING: ['MENGHITUNG RUMUS...', 'text-violet-300', 'bg-violet-300 animate-ping'],
+                SOLVING: ['MENYELESAIKAN...', 'text-emerald-300', 'bg-emerald-300 animate-ping'],
+                ERROR: ['GAGAL — BELUM SELESAI', 'text-rose-400', 'bg-rose-400'],
+                CANCELLED: ['DIBATALKAN', 'text-slate-300', 'bg-slate-400']
+            };
+            // Satu-satunya pintu perubahan mode; juga menetapkan kunci kontrol sesuai mode.
             function updateStatusUI(mode) {
                 currentMode = mode;
                 updateCountersUI();
-                if (mode === 'SOLVED') {
-                    statusText.textContent = 'TERSELESAIKAN';
-                    statusText.className = 'text-emerald-400 truncate max-w-[130px] sm:max-w-none';
-                    statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0';
-                    scrambleLabel.textContent = 'Acak Rubik'; mobScrambleLabel.textContent = 'Acak';
-                    btnSolve.disabled = mobBtnSolve.disabled = btnPause.disabled = true;
-                    btnScramble.disabled = mobBtnScramble.disabled = false;
-                    activePhaseBadge.textContent = 'Selesai ✓';
-                } else if (mode === 'SCRAMBLING') {
-                    statusText.textContent = isPaused ? 'DIJEDA (ACAK)' : 'MENGACAK...';
-                    statusText.className = 'text-amber-400 truncate max-w-[130px] sm:max-w-none';
-                    statusDot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping flex-shrink-0';
-                    scrambleLabel.textContent = 'Acak Ulang'; mobScrambleLabel.textContent = 'Acak';
-                    btnSolve.disabled = mobBtnSolve.disabled = btnPause.disabled = false;
-                    activePhaseBadge.textContent = 'Mengacak';
-                } else if (mode === 'SCRAMBLED') {
-                    statusText.textContent = 'TERACAK (SIAP RUMUS)';
-                    statusText.className = 'text-sky-400 truncate max-w-[130px] sm:max-w-none';
-                    statusDot.className = 'w-2 h-2 rounded-full bg-sky-400 animate-pulse flex-shrink-0';
-                    scrambleLabel.textContent = mobScrambleLabel.textContent = 'Acak Lagi';
-                    btnSolve.disabled = mobBtnSolve.disabled = btnScramble.disabled = mobBtnScramble.disabled = false;
-                    btnPause.disabled = true;
-                    activePhaseBadge.textContent = 'Siap Solve';
-                } else if (mode === 'SOLVING') {
-                    statusText.textContent = isPaused ? 'DIJEDA (RUMUS)' : 'MENYELESAIKAN...';
-                    statusText.className = 'text-emerald-300 truncate max-w-[130px] sm:max-w-none';
-                    statusDot.className = 'w-2 h-2 rounded-full bg-emerald-300 animate-ping flex-shrink-0';
-                    btnSolve.disabled = mobBtnSolve.disabled = true;
-                    btnPause.disabled = false;
-                }
+                const [txt, tcls, dcls] = STATUS_STYLE[mode];
+                const paused = isPaused && (mode === 'SCRAMBLING' || mode === 'SOLVING');
+                statusText.textContent = paused ? txt.replace('...', '') + ' (DIJEDA)' : txt;
+                statusText.className = tcls + ' truncate max-w-[130px] sm:max-w-none';
+                statusDot.className = 'w-2 h-2 rounded-full flex-shrink-0 ' + dcls;
+                const computing = mode === 'COMPUTING', solving = mode === 'SOLVING';
+                scrambleLabel.textContent = mode === 'SOLVED' ? 'Acak Rubik' : (mode === 'SCRAMBLING' ? 'Acak Ulang' : 'Acak Lagi');
+                mobScrambleLabel.textContent = mode === 'SOLVED' ? 'Acak' : 'Acak';
+                setDisabled([btnSolve, mobBtnSolve], !(mode === 'SCRAMBLING' || mode === 'SCRAMBLED' || mode === 'ERROR' || mode === 'CANCELLED'));
+                setDisabled([btnScramble, mobBtnScramble], computing);
+                setDisabled([btnInstantScramble, mobBtnInstant, btnTwistStep], computing || solving);
+                setDisabled([btnPause], !(mode === 'SCRAMBLING' || mode === 'SOLVING'));
+                setDisabled([sizeSlider, sizeInput, ...presetBtns], computing);
+                const badge = { SOLVED: 'Selesai ✓', SCRAMBLING: 'Mengacak', SCRAMBLED: 'Siap Solve', COMPUTING: 'Menghitung', SOLVING: 'Menyelesaikan', ERROR: 'Gagal ✗', CANCELLED: 'Dibatalkan' }[mode];
+                activePhaseBadge.textContent = badge;
+                btnPause.textContent = isPaused ? '▶ Lanjut' : '⏸ Jeda';
             }
 
             let lastSolveInfo = '';
             function showSolvedCelebration() {
-                solvedSubtext.textContent = `Rubik ${cubeSize}×${cubeSize} (${formatNumberID(6 * cubeSize * cubeSize)} stiker) selesai murni dengan rumus!${lastSolveInfo}`;
+                solvedSubtext.textContent = `Rubik ${cubeSize}×${cubeSize} (${formatNumberID(6 * cubeSize * cubeSize)} stiker) terverifikasi selesai dari piksel GPU.${lastSolveInfo}`;
                 solvedBanner.classList.remove('opacity-0', '-translate-y-4');
                 solvedBanner.classList.add('opacity-100', 'translate-y-0');
                 setTimeout(() => {
@@ -924,18 +1629,19 @@
                     }
                 }, 5000);
             }
-
             function hideSolvedCelebration() {
                 solvedBanner.classList.remove('opacity-100', 'translate-y-0');
                 solvedBanner.classList.add('opacity-0', '-translate-y-4');
             }
+
 
             const MIN_TPS = 0.1, MAX_TPS = 2500.0;
             const sliderToTps = val => MIN_TPS * Math.pow(MAX_TPS / MIN_TPS, Math.max(0, Math.min(1, val / 1000)));
             const tpsToSlider = tps => Math.round((Math.log(Math.max(MIN_TPS, Math.min(MAX_TPS, tps)) / MIN_TPS) / Math.log(MAX_TPS / MIN_TPS)) * 1000);
 
             function setSpeedTPS(newTps) {
-                turnsPerSecond = Math.max(MIN_TPS, Math.min(MAX_TPS, parseFloat(newTps) || 3.0));
+                const parsedTps = parseFloat(newTps);
+                turnsPerSecond = Math.max(MIN_TPS, Math.min(MAX_TPS, Number.isFinite(parsedTps) ? parsedTps : turnsPerSecond));
                 speedSlider.value = tpsToSlider(turnsPerSecond);
                 speedTpsInput.value = turnsPerSecond < 10 ? turnsPerSecond.toFixed(2) : Math.round(turnsPerSecond);
                 if (turnsPerSecond < 1.0) {
@@ -948,7 +1654,7 @@
                     speedModeBadge.textContent = `Cepat (${Math.round(turnsPerSecond)}/dtk)`;
                     speedModeBadge.className = 'text-[10px] mono font-semibold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30';
                 } else {
-                    speedModeBadge.textContent = `GPU Warp (${Math.round(turnsPerSecond)}/dtk)`;
+                    speedModeBadge.textContent = `Turbo (${Math.round(turnsPerSecond)}/dtk)`;
                     speedModeBadge.className = 'text-[10px] mono font-semibold px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40';
                 }
                 speedPresets.forEach(btn => {
@@ -972,913 +1678,246 @@
             });
 
             // ============================================================================
-            // MATHEMATICAL RUBIK SOLVERS (2x2 BFS, 3x3 KOCIEMBA, 4x4..400x400 ORBIT SOLVER)
+            // PEMBACAAN STATE GPU
             // ============================================================================
-            function makeGeom(N) {
-                const NORM = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
-                const fPos = (f, u, v) => { const x = u*2-1, y = v*2-1;
-                    return f===0?[1,y,-x]: f===1?[-1,y,x]: f===2?[x,1,-y]: f===3?[x,-1,y]: f===4?[x,y,1]:[-x,y,-1]; };
-                const rot = (p, a, d) => { const s = Math.sign(d);
-                    return a===0?[p[0],-s*p[2],s*p[1]]: a===1?[s*p[2],p[1],-s*p[0]]:[-s*p[1],s*p[0],p[2]]; };
-                const cl = v => Math.floor(Math.min(0.999999, Math.max(0, 0.5*(v+1))) * N);
-                const atlas = (p, n) => { const an = n.map(Math.abs); let f, c;
-                    if (an[0]>an[1] && an[0]>an[2]) { if (n[0]>0) { f=0; c=[-p[2],p[1]]; } else { f=1; c=[p[2],p[1]]; } }
-                    else if (an[1]>an[0] && an[1]>an[2]) { if (n[1]>0) { f=2; c=[p[0],-p[2]]; } else { f=3; c=[p[0],p[2]]; } }
-                    else { if (n[2]>0) { f=4; c=[p[0],p[1]]; } else { f=5; c=[-p[0],p[1]]; } }
-                    const row = Math.floor(f/4), col = f - row*4;
-                    return [col*N + cl(c[0]), row*N + cl(c[1])]; };
-                const st = [], idxOf = {};
-                for (let f = 0; f < 6; f++) { const row = Math.floor(f/4), col = f - row*4;
-                    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-                        const x = col*N+i, y = row*N+j; idxOf[x+','+y] = st.length;
-                        st.push({ f, x, y, i, j, pos: fPos(f, (i+.5)/N, (j+.5)/N) }); } }
-                function buildPerm(axis, dir, slice) { return st.map((s, d) => {
-                    if (Math.min(N-1, Math.floor((s.pos[axis]+1)*0.5*N)) !== slice) return d;
-                    const a = atlas(rot(s.pos, axis, -dir), rot(NORM[s.f], axis, -dir));
-                    return idxOf[a[0]+','+a[1]]; }); }
-                return { st, buildPerm };
-            }
-
-            const S2 = (function () {
-                const { st, buildPerm } = makeGeom(2);
-                const MV = [];
-                for (let a = 0; a < 3; a++) { const p = buildPerm(a,1,1), q = buildPerm(a,-1,1); MV.push(p, q, p.map(i => p[i])); }
-                const inv = m => Math.floor(m/3)*3 + [1,0,2][m%3];
-                const apply = (s, p) => { const o = new Uint8Array(24); for (let d = 0; d < 24; d++) o[d] = s[p[d]]; return o; };
-                const key = a => String.fromCharCode.apply(null, a);
-                function goalOf(s) { const c = {};
-                    st.forEach((q, i) => { if (q.pos.every(v => v < 0)) c[q.f] = s[i]; });
-                    const gf = [c[1]^1, c[1], c[3]^1, c[3], c[5]^1, c[5]];
-                    return Uint8Array.from(st.map(q => gf[q.f])); }
-                function solve(state) {
-                    const G = goalOf(state), kS = key(state), kG = key(G);
-                    if (kS === kG) return [];
-                    const F = new Map([[kS, null]]), B = new Map([[kG, null]]);
-                    let fr = [state], br = [G], meet = null;
-                    const expand = (list, M, O, back) => { const nx = [];
-                        for (const s of list) { const ks = key(s);
-                            for (let m = 0; m < 9; m++) { const t = apply(s, MV[m]), kt = key(t);
-                                if (M.has(kt)) continue;
-                                M.set(kt, { p: ks, m: back ? inv(m) : m }); nx.push(t);
-                                if (O.has(kt)) { meet = kt; return nx; } } }
-                        return nx; };
-                    for (let it = 0; it < 16 && meet === null; it++) {
-                        if (fr.length <= br.length) fr = expand(fr, F, B, false); else br = expand(br, B, F, true); }
-                    if (meet === null) return null;
-                    const a = [];
-                    for (let k = meet; F.get(k); k = F.get(k).p) a.push(F.get(k).m);
-                    a.reverse();
-                    for (let k = meet; B.get(k); k = B.get(k).p) a.push(B.get(k).m);
-                    return a; }
-                return { st, buildPerm, apply, solve, MV };
-            })();
-
-            const K3 = (function () {
-                const { st, buildPerm } = makeGeom(3);
-                const EPS = 0.01, grp = new Map(), cen = [];
-                st.forEach((s, i) => {
-                    if (s.pos.filter(v => Math.abs(v) < EPS).length === 2) { cen[s.f] = i; return; }
-                    const k = s.pos.map(v => Math.abs(v) < EPS ? 0 : Math.sign(v)).join(',');
-                    if (!grp.has(k)) grp.set(k, []);
-                    grp.get(k).push(i);
-                });
-                const keys = [...grp.keys()];
-                const cK = keys.filter(k => !k.includes('0')).sort();
-                const eK = keys.filter(k => k.includes('0')).sort((a, b) => ((a.split(',')[1] === '0') - (b.split(',')[1] === '0')) || (a < b ? -1 : 1));
-                const byF = l => { const m = {}; l.forEach(i => m[st[i].f] = i); return m; };
-                const C = cK.map(k => { const [sx, sy, sz] = k.split(',').map(Number), m = byF(grp.get(k));
-                    const y = m[sy > 0 ? 2 : 3], x = m[sx > 0 ? 0 : 1], z = m[sz > 0 ? 4 : 5];
-                    return sx * sy * sz > 0 ? [y, z, x] : [y, x, z]; });
-                const E = eK.map(k => { const v = k.split(',').map(Number), l = grp.get(k), m = byF(l);
-                    const first = v[1] !== 0 ? m[v[1] > 0 ? 2 : 3] : m[v[2] > 0 ? 4 : 5];
-                    return [first, l.find(i => i !== first)]; });
-                const fk = a => a.slice().sort().join();
-                const cHome = new Map(C.map((l, i) => [fk(l.map(j => st[j].f)), i]));
-                const eHome = new Map(E.map((l, i) => [fk(l.map(j => st[j].f)), i]));
-                const owner = new Map();
-                C.forEach((l, c) => l.forEach((s, j) => owner.set(s, [c, j])));
-                E.forEach((l, e) => l.forEach((s, j) => owner.set(s, [e, j])));
-                const isY = v => v === 2 || v === 3;
-                function toCubie(V) {
-                    const cp = [], co = [], ep = [], eo = [];
-                    C.forEach(l => { const v = l.map(i => V[i]); cp.push(cHome.get(fk(v))); co.push(v.findIndex(isY)); });
-                    E.forEach(l => { const v = l.map(i => V[i]); ep.push(eHome.get(fk(v)));
-                        eo.push(v.indexOf(v.some(isY) ? v.find(isY) : v.find(x => x === 4 || x === 5))); });
-                    return { cp, co, ep, eo };
-                }
-                function cubieMove(p) { const o = { cs: [], cd: [], es: [], ed: [] };
-                    C.forEach(l => { const [c2, k] = owner.get(p[l[0]]); o.cs.push(c2); o.cd.push((3 - k) % 3); });
-                    E.forEach(l => { const [e2, k] = owner.get(p[l[0]]); o.es.push(e2); o.ed.push(k); });
-                    return o; }
-                const applyC = (u, m) => ({
-                    cp: u.cp.map((_, c) => u.cp[m.cs[c]]), co: u.co.map((_, c) => (u.co[m.cs[c]] + m.cd[c]) % 3),
-                    ep: u.ep.map((_, e) => u.ep[m.es[e]]), eo: u.eo.map((_, e) => (u.eo[m.es[e]] + m.ed[e]) % 2) });
-                const encP = a => { const n = a.length; let r = 0;
-                    for (let i = 0; i < n; i++) { let c = 0; for (let j = i + 1; j < n; j++) if (a[j] < a[i]) c++; r = r * (n - i) + c; } return r; };
-                const decP = (r, n) => { const d = []; for (let i = n - 1; i >= 0; i--) { d[i] = r % (n - i); r = Math.floor(r / (n - i)); }
-                    const av = [...Array(n).keys()]; return d.map(x => av.splice(x, 1)[0]); };
-                const decT = t => { const co = []; let s = 0; for (let i = 6; i >= 0; i--) { co[i] = t % 3; t = Math.floor(t / 3); s += co[i]; } co[7] = (3 - s % 3) % 3; return co; };
-                const encT = co => { let t = 0; for (let i = 0; i < 7; i++) t = t * 3 + co[i]; return t; };
-                const decF = f => { const eo = []; let s = 0; for (let i = 10; i >= 0; i--) { eo[i] = f % 2; f >>= 1; s += eo[i]; } eo[11] = s % 2; return eo; };
-                const encF = eo => { let f = 0; for (let i = 0; i < 11; i++) f = f * 2 + eo[i]; return f; };
-                const pop = m => { let c = 0; while (m) { c += m & 1; m >>= 1; } return c; };
-                const masks = [0xF00]; for (let m = 0; m < 4096; m++) if (m !== 0xF00 && pop(m) === 4) masks.push(m);
-                const mrank = new Map(masks.map((m, i) => [m, i]));
-                const P2 = [6, 7, 8, 9, 10, 11, 2, 5, 14, 17];
-                const SP = [], MVc = [];
-                let T = null;
-                function build() {
-                    if (T) return T;
-                    for (let f = 0; f < 6; f++) { const ax = f >> 1, sl = (f & 1) ? 0 : 2;
-                        const p = buildPerm(ax, 1, sl), q = buildPerm(ax, -1, sl); SP.push(p, q, p.map(i => p[i])); }
-                    SP.forEach(p => MVc.push(cubieMove(p)));
-                    const mvT = new Uint16Array(2187 * 18), mvF = new Uint16Array(2048 * 18), mvS = new Uint16Array(495 * 18);
-                    for (let m = 0; m < 18; m++) { const { cs, cd, es, ed } = MVc[m];
-                        for (let t = 0; t < 2187; t++) { const co = decT(t); mvT[t*18+m] = encT(co.map((_, c) => (co[cs[c]] + cd[c]) % 3)); }
-                        for (let f = 0; f < 2048; f++) { const eo = decF(f); mvF[f*18+m] = encF(eo.map((_, e) => (eo[es[e]] + ed[e]) % 2)); }
-                        for (let r = 0; r < 495; r++) { let nm = 0; for (let c = 0; c < 12; c++) if ((masks[r] >> es[c]) & 1) nm |= 1 << c; mvS[r*18+m] = mrank.get(nm); } }
-                    const mvCP = new Uint16Array(40320 * 10), mvEP = new Uint16Array(40320 * 10), mvSL = new Uint8Array(24 * 10);
-                    for (let i = 0; i < 10; i++) { const { cs, es } = MVc[P2[i]];
-                        for (let a = 0; a < 40320; a++) { const x = decP(a, 8);
-                            mvCP[a*10+i] = encP(x.map((_, c) => x[cs[c]])); mvEP[a*10+i] = encP(x.map((_, c) => x[es[c]])); }
-                        for (let a = 0; a < 24; a++) { const x = decP(a, 4); mvSL[a*10+i] = encP(x.map((_, c) => x[es[c + 8] - 8])); } }
-                    const bfs = (s1, m1, s2, m2, nm) => { const P = new Uint8Array(s1 * s2).fill(255); P[0] = 0; let d = 0, cnt = 1;
-                        while (cnt > 0) { cnt = 0;
-                            for (let i = 0; i < P.length; i++) if (P[i] === d) { const a = (i / s2) | 0, b = i - a * s2;
-                                for (let m = 0; m < nm; m++) { const j = m1[a*nm+m] * s2 + m2[b*nm+m]; if (P[j] === 255) { P[j] = d + 1; cnt++; } } }
-                            d++; } return P; };
-                    T = { mvT, mvF, mvS, mvCP, mvEP, mvSL,
-                        pTS: bfs(2187, mvT, 495, mvS, 18), pFS: bfs(2048, mvF, 495, mvS, 18),
-                        pCP: bfs(40320, mvCP, 24, mvSL, 10), pEP: bfs(40320, mvEP, 24, mvSL, 10) };
-                    return T;
-                }
-                function tidy(sol) {
-                    const out = [];
-                    for (const m of sol) { const f = (m / 3) | 0, q = [1, 3, 2][m % 3], l = out[out.length - 1];
-                        if (l && l.f === f) l.q = (l.q + q) % 4; else out.push({ f, q }); }
-                    return out.filter(o => o.q).map(o => o.f * 3 + [0, 0, 2, 1][o.q]); }
-                function solve(colors, useFixedCenters = false, extraMs = 150) {
-                    const t = build(), home = [];
-                    if (useFixedCenters) { for (let f = 0; f < 6; f++) home[f] = f; }
-                    else { for (let f = 0; f < 6; f++) home[colors[cen[f]]] = f; }
-                    const cu = toCubie(colors.map(c => home[c]));
-                    if (cu.cp.some(v => v === undefined || v < 0) || cu.ep.some(v => v === undefined || v < 0)) return null;
-                    let best = null, until = Infinity; const path = [];
-                    const search2 = (a, b, c, dl, last, out) => {
-                        if (Math.max(t.pCP[a*24+c], t.pEP[b*24+c]) > dl) return false;
-                        if (dl === 0) return true;
-                        for (let i = 0; i < 10; i++) { const m = P2[i], f = (m / 3) | 0;
-                            if (last >= 0 && (f === last || ((f >> 1) === (last >> 1) && f < last))) continue;
-                            out.push(m);
-                            if (search2(t.mvCP[a*10+i], t.mvEP[b*10+i], t.mvSL[c*10+i], dl - 1, f, out)) return true;
-                            out.pop(); }
-                        return false; };
-                    const finish = last => {
-                        let u = cu; for (const m of path) u = applyC(u, MVc[m]);
-                        const a = encP(u.cp), b = encP(u.ep.slice(0, 8)), c = encP(u.ep.slice(8).map(v => v - 8));
-                        const h2 = Math.max(t.pCP[a*24+c], t.pEP[b*24+c]);
-                        const lim = Math.min(18, (best ? best.length - 1 : 99) - path.length);
-                        for (let d2 = h2; d2 <= lim; d2++) { const out = [];
-                            if (search2(a, b, c, d2, last, out)) { if (!best) until = Date.now() + extraMs; best = path.concat(out); return; } } };
-                    const search1 = (a, b, s, dl, last) => {
-                        if (best && Date.now() > until) return;
-                        if (Math.max(t.pTS[a*495+s], t.pFS[b*495+s]) > dl) return;
-                        if (dl === 0) { finish(last); return; }
-                        for (let m = 0; m < 18; m++) { const f = (m / 3) | 0;
-                            if (last >= 0 && (f === last || ((f >> 1) === (last >> 1) && f < last))) continue;
-                            path.push(m); search1(t.mvT[a*18+m], t.mvF[b*18+m], t.mvS[s*18+m], dl - 1, f); path.pop(); } };
-                    const a0 = encT(cu.co), b0 = encF(cu.eo);
-                    let m0 = 0; cu.ep.forEach((pc, pos) => { if (pc >= 8) m0 |= 1 << pos; });
-                    const s0 = mrank.get(m0);
-                    if (s0 === undefined) return null;
-                    for (let d1 = 0; d1 <= 22; d1++) {
-                        if (best && (d1 >= best.length || Date.now() > until)) break;
-                        search1(a0, b0, s0, d1, -1); }
-                    return best && tidy(best); }
-                return { st, solve, prep: build, SP };
-            })();
-
-            function readGPUState(N, st) {
-                const W = 4 * N, buf = new Uint8Array(W * 2 * N * 4);
-                renderer.readRenderTargetPixels(currentFbo, 0, 0, W, 2 * N, buf);
-                const pal = [[242,41,51],[255,122,10],[247,250,255],[250,217,15],[13,204,92],[26,117,250]];
-                return Uint8Array.from(st.map(q => { const o = (q.y*W + q.x) * 4; let best = 0, bd = 1e9;
-                    pal.forEach((p, k) => { const d = (p[0]-buf[o])**2 + (p[1]-buf[o+1])**2 + (p[2]-buf[o+2])**2;
-                        if (d < bd) { bd = d; best = k; } });
-                    return best; }));
-            }
-
-            function readFullCubeGridFromGPU(N) {
-                const W = 4 * N, H = 2 * N;
-                const buf = new Uint8Array(W * H * 4);
+            function readGrid(N) {
+                const W = 4 * N, H = 2 * N, buf = new Uint8Array(W * H * 4);
                 renderer.readRenderTargetPixels(currentFbo, 0, 0, W, H, buf);
-                const pal = [[242,41,51],[255,122,10],[247,250,255],[250,217,15],[13,204,92],[26,117,250]];
-                const grid = new Uint8Array(6 * N * N);
+                const pal = HC.PALETTE, grid = new Uint8Array(6 * N * N);
+                let unknown = 0;
                 for (let f = 0; f < 6; f++) {
-                    const row = (f / 4) | 0, col = f - row * 4, fOffset = f * N * N;
-                    for (let j = 0; j < N; j++) {
-                        const texY = row * N + j;
-                        for (let i = 0; i < N; i++) {
-                            const o = (texY * W + col * N + i) * 4;
-                            let best = 0, bd = 1e9;
-                            for (let k = 0; k < 6; k++) {
-                                const p = pal[k], d = (p[0] - buf[o]) ** 2 + (p[1] - buf[o + 1]) ** 2 + (p[2] - buf[o + 2]) ** 2;
-                                if (d < bd) { bd = d; best = k; }
-                            }
-                            grid[fOffset + j * N + i] = best;
-                        }
+                    const row = (f / 4) | 0, col = f - row * 4, fOff = f * N * N;
+                    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+                        const o = ((row * N + j) * W + col * N + i) * 4;
+                        let best = 0, bd = 1e9;
+                        for (let k = 0; k < 6; k++) { const p = pal[k], d = (p[0]-buf[o])**2 + (p[1]-buf[o+1])**2 + (p[2]-buf[o+2])**2; if (d < bd) { bd = d; best = k; } }
+                        if (bd > 900) unknown++;       // piksel bukan salah satu 6 warna stiker => pembacaan tidak dapat dipercaya
+                        grid[fOff + j * N + i] = best;
                     }
                 }
-                return grid;
+                return { grid, unknown, version: stateVersion };
             }
+            // Sumber kebenaran status selesai: state GPU yang SUDAH dikomit (bukan antrean kosong / riwayat).
+            function isCubeSolvedOnGPU(N) { const r = readGrid(N); return r.unknown === 0 && HC.gridSolved(N, r.grid); }
 
-            // Cek keadaan selesai dari piksel GPU: setiap sisi harus satu warna
-            function isCubeSolvedOnGPU(N) {
-                const g = readFullCubeGridFromGPU(N), NN = N * N;
-                for (let f = 0; f < 6; f++) {
-                    const c0 = g[f * NN];
-                    for (let k = 1; k < NN; k++) if (g[f * NN + k] !== c0) return false;
-                }
-                return true;
+            // ============================================================================
+            // KONTROL ASINKRON / PEMBATALAN
+            // ============================================================================
+            let modalTimer = null;
+            function showComputeModal() { solverComputeModal.classList.remove('opacity-0', 'pointer-events-none'); }
+            function hideComputeModal() { if (modalTimer) { clearTimeout(modalTimer); modalTimer = null; } solverComputeModal.classList.add('opacity-0', 'pointer-events-none'); }
+            function clearAutoLoop() { if (autoLoopTimer) { clearTimeout(autoLoopTimer); autoLoopTimer = null; } }
+            // Membatalkan SEMUA pekerjaan async yang sedang berjalan (solver, timer auto-loop). Hasil lamanya akan diabaikan.
+            function invalidateOps() { opToken++; clearAutoLoop(); if (isComputingFormula) { isComputingFormula = false; } hideComputeModal(); }
+            function scheduleAuto(fn, delay, expectMode) {
+                clearAutoLoop(); const tk = opToken;
+                autoLoopTimer = setTimeout(() => { autoLoopTimer = null; if (tk === opToken && autoLoopToggle.checked && currentMode === expectMode && !contextLost) fn(); }, delay);
             }
-
-            // Orbit Sticker Builder (24-sticker chiral orbit per coordinate pair)
-            function buildOrbitStickers(N, baseI, baseJ) { return buildStickerSet(N, [[baseI, baseJ]]); }
-            function buildStickerSet(N, bases) {
-                const NORM = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
-                const fPos = (f, u, v) => { const x = u*2-1, y = v*2-1;
-                    return f===0?[1,y,-x]: f===1?[-1,y,x]: f===2?[x,1,-y]: f===3?[x,-1,y]: f===4?[x,y,1]:[-x,y,-1]; };
-                const rot = (p, a, d) => { const s = Math.sign(d);
-                    return a===0?[p[0],-s*p[2],s*p[1]]: a===1?[s*p[2],p[1],-s*p[0]]:[-s*p[1],s*p[0],p[2]]; };
-                const cl = v => Math.floor(Math.min(0.999999, Math.max(0, 0.5*(v+1))) * N);
-                const toFaceIJ = (p, n) => { const an = n.map(Math.abs); let f, c;
-                    if (an[0]>an[1] && an[0]>an[2]) { if (n[0]>0) { f=0; c=[-p[2],p[1]]; } else { f=1; c=[p[2],p[1]]; } }
-                    else if (an[1]>an[0] && an[1]>an[2]) { if (n[1]>0) { f=2; c=[p[0],-p[2]]; } else { f=3; c=[p[0],p[2]]; } }
-                    else { if (n[2]>0) { f=4; c=[p[0],p[1]]; } else { f=5; c=[-p[0],p[1]]; } }
-                    return { f, i: cl(c[0]), j: cl(c[1]) };
-                };
-
-                const coordsOnFace = [];
-                for (const [bI, bJ] of bases) {
-                    let curI = bI, curJ = bJ;
-                    for (let r = 0; r < 4; r++) {
-                        coordsOnFace.push([curI, curJ]);
-                        const nextI = N - 1 - curJ, nextJ = curI;
-                        curI = nextI; curJ = nextJ;
-                    }
-                }
-
-                const orbitList = [], keyToIdx = new Map();
-                for (let f = 0; f < 6; f++) {
-                    for (const [i, j] of coordsOnFace) {
-                        const pos = fPos(f, (i + 0.5) / N, (j + 0.5) / N);
-                        keyToIdx.set(`${f},${i},${j}`, orbitList.length);
-                        orbitList.push({ f, i, j, pos });
-                    }
-                }
-
-                function getMovePerm(axis, slice, dir) {
-                    const M = orbitList.length, perm = new Uint8Array(M);
-                    for (let d = 0; d < M; d++) {
-                        const s = orbitList[d];
-                        const sl = Math.min(N - 1, Math.floor((s.pos[axis] + 1) * 0.5 * N));
-                        if (sl !== slice) perm[d] = d;
-                        else {
-                            const src = toFaceIJ(rot(s.pos, axis, -dir), rot(NORM[s.f], axis, -dir));
-                            perm[d] = keyToIdx.get(`${src.f},${src.i},${src.j}`);
-                        }
-                    }
-                    return perm;
-                }
-                return { orbitList, getMovePerm, perFace: coordsOnFace.length };
+            function commitActiveMove() {
+                if (activeMove) { commitMoveOnGPU(activeMove); if (!activeMove.isSolvingMove) scrambleCounter++; activeMove = null; }
+                updateSliceGeometryUniforms(cubeSize, 0, 0, cubeSize - 1, 0.0);
             }
+            btnCancelCompute.addEventListener('click', () => {
+                if (currentMode !== 'COMPUTING') return;
+                invalidateOps();                      // token berubah => solver berhenti di titik cek berikutnya & hasilnya dibuang
+                formulaStreamBox.innerHTML = '<span class="text-slate-300 font-semibold">[Dibatalkan]</span> <span class="text-sky-300">Perhitungan rumus dihentikan; kubus tidak berubah.</span>';
+                updateStatusUI('CANCELLED');
+            });
 
-            const applyPerm = (s, p) => { const o = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) o[i] = s[p[i]]; return o; };
-            const composePerm = (p1, p2) => { const o = new Uint8Array(p1.length); for (let i = 0; i < p1.length; i++) o[i] = p1[p2[i]]; return o; };
-
-            // Prebuild canonical Wing & Niklas Center Libraries once
-            const wingRef = buildStickerSet(4, [[1, 0], [2, 0]]);
-            const wingPermCache = new Map();
-            const wingRefPerm = (ax, sl, dir) => { const k = ax * 100 + sl * 10 + (dir > 0 ? 1 : 0); let p = wingPermCache.get(k); if (!p) { p = wingRef.getMovePerm(ax, sl, dir); wingPermCache.set(k, p); } return p; };
-            const wingMacros = [];
-            for (let ax = 0; ax < 3; ax++) {
-                for (let side = 0; side < 2; side++) {
-                    const refSlice = side === 0 ? 1 : 2;
-                    for (const dir of [1, -1]) {
-                        wingMacros.push({ perm: wingRef.getMovePerm(ax, refSlice, dir), steps: [{ isInner: true, axis: ax, side, dir }] });
-                    }
-                }
-            }
-            for (let bAx = 0; bAx < 3; bAx++) {
-                for (const bSide of [0, 1]) {
-                    const bRefSlice = bSide === 0 ? 0 : 3;
-                    for (const bDir of [1, -1]) {
-                        const pB = wingRef.getMovePerm(bAx, bRefSlice, bDir), pBInv = wingRef.getMovePerm(bAx, bRefSlice, -bDir);
-                        for (let aAx = 0; aAx < 3; aAx++) {
-                            if (aAx === bAx) continue;
-                            for (let aSide = 0; aSide < 2; aSide++) {
-                                const aRefSlice = aSide === 0 ? 1 : 2;
-                                for (const aDir of [1, -1]) {
-                                    const pA = wingRef.getMovePerm(aAx, aRefSlice, aDir);
-                                    wingMacros.push({
-                                        perm: composePerm(composePerm(pB, pA), pBInv),
-                                        steps: [
-                                            { isInner: false, axis: bAx, side: bSide, dir: bDir },
-                                            { isInner: true,  axis: aAx, side: aSide, dir: aDir },
-                                            { isInner: false, axis: bAx, side: bSide, dir: -bDir }
-                                        ]
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Library wing: makro 4-siklus unik + semua 3-siklus wing (komutator + konjugasi)
-            let _wingTable = null;
-            function getWingTable() {
-                if (_wingTable) return _wingTable;
-                const inv = p => { const q = new Uint8Array(p.length); for (let i = 0; i < p.length; i++) q[p[i]] = i; return q; };
-                const comp = (x, y) => { const o = new Uint8Array(x.length); for (let i = 0; i < x.length; i++) o[i] = x[y[i]]; return o; };
-                const uniq = new Map();
-                for (const m of wingMacros) {
-                    const k = m.perm.join(',');
-                    if (!uniq.has(k) || uniq.get(k).steps.length > m.steps.length) uniq.set(k, m);
-                }
-                const macros = [...uniq.values()];
-                const minv = macros.map(m => inv(m.perm));
-                const invIdx = minv.map(q => { const k = q.join(','); return macros.findIndex(m => m.perm.join(',') === k); });
-                const goal = Uint8Array.from(wingRef.orbitList.map(o => o.f));
-                const wid = wingRef.orbitList.map(o => o.pos.map(v => Math.min(3, Math.floor((v + 1) * 2))).join(','));
-                const wingIds = [...new Set(wid)];
-                const sw = wid.map(k => wingIds.indexOf(k));
-                const movedWings = c => { const m = new Set(); for (let k = 0; k < c.length; k++) if (c[k] !== k) m.add(sw[k]); return m; };
-                const lib = new Map();
-                for (let i = 0; i < macros.length; i++) for (let j = 0; j < macros.length; j++) {
-                    const A = macros[i].perm, B = macros[j].perm;
-                    const c = comp(comp(comp(A, B), minv[i]), minv[j]);
-                    if (movedWings(c).size === 3) { const k = c.join(','); if (!lib.has(k)) lib.set(k, { perm: c, word: [i, j, invIdx[i], invIdx[j]] }); }
-                }
-                for (let round = 0; round < 2; round++) {
-                    for (const e of [...lib.values()]) for (let m = 0; m < macros.length; m++) {
-                        const c = comp(comp(macros[m].perm, e.perm), minv[m]);
-                        const k = c.join(',');
-                        if (!lib.has(k)) lib.set(k, { perm: c, word: [m, ...e.word, invIdx[m]] });
-                    }
-                }
-                const L = [...lib.values()];
-                L.forEach(e => { e.wings = movedWings(e.perm); e.moved = []; for (let x = 0; x < e.perm.length; x++) if (e.perm[x] !== x) e.moved.push(x); });
-                _wingTable = { macros, goal, sw, L };
-                return _wingTable;
-            }
-
-            function buildNiklasLibraryForCenterRef(N_ref, baseI, baseJ) {
-                const ref = buildOrbitStickers(N_ref, baseI, baseJ), macros = [];
-                for (let ax = 0; ax < 3; ax++) {
-                    const slicesI = [{ refSl: baseI, which: 'I', side: 0 }, { refSl: N_ref - 1 - baseI, which: 'I', side: 1 }];
-                    const slicesJ = (baseJ === N_ref - 1 - baseJ)
-                        ? [{ refSl: baseJ, which: 'J', side: 0 }]
-                        : [{ refSl: baseJ, which: 'J', side: 0 }, { refSl: N_ref - 1 - baseJ, which: 'J', side: 1 }];
-                    const allInner = [...slicesI, ...slicesJ];
-                    for (const sA of allInner) {
-                        for (const sB of allInner) {
-                            if (sA.refSl === sB.refSl) continue;
-                            for (let fAx = 0; fAx < 3; fAx++) {
-                                if (fAx === ax) continue;
-                                for (const fSide of [0, 1]) {
-                                    const fRefSl = fSide === 0 ? 0 : (N_ref - 1);
-                                    for (const fDir of [1, -1]) {
-                                        const pF = ref.getMovePerm(fAx, fRefSl, fDir), pFInv = ref.getMovePerm(fAx, fRefSl, -fDir);
-                                        const pA = ref.getMovePerm(ax, sA.refSl, 1), pAInv = ref.getMovePerm(ax, sA.refSl, -1);
-                                        const pB = ref.getMovePerm(ax, sB.refSl, 1), pBInv = ref.getMovePerm(ax, sB.refSl, -1);
-                                        let pNik = composePerm(pA, pF);
-                                        pNik = composePerm(pNik, pB);
-                                        pNik = composePerm(pNik, pFInv);
-                                        pNik = composePerm(pNik, pAInv);
-                                        pNik = composePerm(pNik, pF);
-                                        pNik = composePerm(pNik, pBInv);
-                                        pNik = composePerm(pNik, pFInv);
-                                        let moved = 0;
-                                        for (let u = 0; u < 24; u++) if (pNik[u] !== u) moved++;
-                                        if (moved === 3) macros.push({ perm: pNik, ax, sA, sB, fAx, fSide, fDir });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                // Perluas: konjugasi dengan semua langkah yang menyentuh orbit ini -> hampir semua 3-siklus
-                const inv = pp => { const q = new Uint8Array(pp.length); for (let x = 0; x < pp.length; x++) q[pp[x]] = x; return q; };
-                const rI = baseI, rJ = baseJ;
-                const gens = [], slSet = [...new Set([0, N_ref - 1, rI, N_ref - 1 - rI, rJ, N_ref - 1 - rJ])];
-                for (let a = 0; a < 3; a++) for (const sl of slSet) for (const d of [1, -1]) {
-                    const pp = ref.getMovePerm(a, sl, d);
-                    gens.push({ perm: pp, pinv: inv(pp), step: { axis: a, refSl: sl, dir: d }, back: { axis: a, refSl: sl, dir: -d } });
-                }
-                const table = new Map();
-                for (const m of macros) {
-                    const k = m.perm.join(',');
-                    if (table.has(k)) continue;
-                    const sA = m.sA.refSl, sB = m.sB.refSl, fSl = m.fSide === 0 ? 0 : N_ref - 1;
-                    table.set(k, { perm: m.perm, steps: [
-                        { axis: m.ax, refSl: sA, dir: 1 }, { axis: m.fAx, refSl: fSl, dir: m.fDir },
-                        { axis: m.ax, refSl: sB, dir: 1 }, { axis: m.fAx, refSl: fSl, dir: -m.fDir },
-                        { axis: m.ax, refSl: sA, dir: -1 }, { axis: m.fAx, refSl: fSl, dir: m.fDir },
-                        { axis: m.ax, refSl: sB, dir: -1 }, { axis: m.fAx, refSl: fSl, dir: -m.fDir } ] });
-                }
-                for (let round = 0; round < 4; round++) {
-                    for (const e of [...table.values()]) for (const g of gens) {
-                        const c = composePerm(composePerm(g.perm, e.perm), g.pinv), k = c.join(',');
-                        if (!table.has(k)) table.set(k, { perm: c, steps: [g.step, ...e.steps, g.back] });
-                    }
-                }
-                const entries = [...table.values()];
-                entries.forEach(e => { e.moved = []; for (let x = 0; x < e.perm.length; x++) if (e.perm[x] !== x) e.moved.push(x); });
-                return { ref, macros, entries };
-            }
-
-            const niklasDiag  = buildNiklasLibraryForCenterRef(4, 1, 1);
-            const niklasObliq = buildNiklasLibraryForCenterRef(6, 1, 2);
-            const niklasCross = buildNiklasLibraryForCenterRef(5, 1, 2);
-
-            // True State-Driven Solver for N >= 4
-            async function solveCubeFromGPUPixels(N, onProgress) {
-                const grid = readFullCubeGridFromGPU(N);
-                const formulaMoves = [], globalOuterMoves = [];
-                const half = Math.floor(N / 2);
-                // Warna target tiap sisi: N ganjil -> warna pusat tetap (K3 menyelesaikan relatif ke pusat), N genap -> indeks sisi
-                const faceGoal = (N % 2 === 1) ? Array.from({ length: 6 }, (_, f) => grid[f * N * N + half * N + half]) : [0, 1, 2, 3, 4, 5];
-
-                onProgress(5, 'Fase 1: Menyelesaikan Kerangka Sudut & Luar...', 0);
-                await new Promise(r => setTimeout(r, 10));
-
-                if (N % 2 === 1) {
-                    const mid = half, mapCoord = [0, mid, N - 1];
-                    const state3 = Uint8Array.from(K3.st.map(q => grid[q.f * N * N + mapCoord[q.j] * N + mapCoord[q.i]]));
-                    K3.prep();
-                    const sol3 = K3.solve(state3, false) || [];
-                    for (let idx = 0; idx < sol3.length; idx++) {
-                        const m = sol3[idx], fc = (m / 3) | 0, k = m % 3;
-                        const axis = fc >> 1, sl = (fc & 1) ? 0 : (N - 1), reps = (k === 2) ? 2 : 1, dir = (k === 1) ? -1 : 1;
-                        for (let r = 0; r < reps; r++) {
-                            const moveObj = { axis, sliceStart: sl, sliceEnd: sl, dir, isSolvingMove: true, phaseName: 'Fase 1: Kerangka 3×3 (Kociemba)', formulaTag: `Kociemba (${idx + 1}/${sol3.length})` };
-                            formulaMoves.push(moveObj);
-                            globalOuterMoves.push(moveObj);
-                        }
-                    }
-                } else {
-                    const { orbitList: cornerOrbit, getMovePerm: getCornerPerm } = buildOrbitStickers(N, 0, 0);
-                    const curCornerState = Uint8Array.from(cornerOrbit.map(o => grid[o.f * N * N + o.j * N + o.i]));
-                    const outerDefs = [];
-                    for (let axis = 0; axis < 3; axis++) {
-                        for (const slice of [0, N - 1]) {
-                            for (const dir of [1, -1]) {
-                                outerDefs.push({ axis, sliceStart: slice, sliceEnd: slice, dir, perm: getCornerPerm(axis, slice, dir) });
-                            }
-                        }
-                    }
-                    const goalCornerState = Uint8Array.from(cornerOrbit.map(o => o.f));
-                    const key = a => String.fromCharCode.apply(null, a);
-                    const kS = key(curCornerState), kG = key(goalCornerState);
-                    if (kS !== kG) {
-                        const F = new Map([[kS, null]]), B = new Map([[kG, null]]);
-                        let fr = [curCornerState], br = [goalCornerState], meet = null;
-                        const expand = (list, M, O, back) => {
-                            const nx = [];
-                            for (const s of list) {
-                                const ks = key(s);
-                                for (let m = 0; m < outerDefs.length; m++) {
-                                    const t = applyPerm(s, outerDefs[m].perm), kt = key(t);
-                                    if (M.has(kt)) continue;
-                                    M.set(kt, { p: ks, m: back ? (m ^ 1) : m });
-                                    nx.push(t);
-                                    if (O.has(kt)) { meet = kt; return nx; }
-                                }
-                            }
-                            return nx;
-                        };
-                        for (let it = 0; it < 14 && meet === null; it++) {
-                            if (fr.length <= br.length) fr = expand(fr, F, B, false);
-                            else br = expand(br, B, F, true);
-                        }
-                        if (meet !== null) {
-                            const path = [];
-                            for (let k = meet; F.get(k); k = F.get(k).p) path.push(F.get(k).m);
-                            path.reverse();
-                            for (let k = meet; B.get(k); k = B.get(k).p) path.push(B.get(k).m);
-                            for (const m of path) {
-                                const mv = outerDefs[m];
-                                const moveObj = { axis: mv.axis, sliceStart: mv.sliceStart, sliceEnd: mv.sliceEnd, dir: mv.dir, isSolvingMove: true, phaseName: 'Fase 1: Kerangka Sudut BFS', formulaTag: `Sudut: ${moveToNotation(mv, N)}` };
-                                formulaMoves.push(moveObj);
-                                globalOuterMoves.push(moveObj);
-                            }
-                        }
-                    }
-                }
-
-                // Phase 2: Solve Wing-Edge Orbits
-                function solveWingOrbitState(curState) {
-                    const WM = getWingTable(), n = curState.length, goal = WM.goal.map(f => faceGoal[f]), M = WM.macros, L = WM.L;
-                    const cnt = st => { let c = 0; for (let i = 0; i < n; i++) if (st[i] === goal[i]) c++; return c; };
-                    const score = (st, p) => { let c = 0; for (let i = 0; i < n; i++) if (st[p[i]] === goal[i]) c++; return c; };
-
-                    function stallFix(st, cur) {
-                        const U = new Set();
-                        for (let i = 0; i < n; i++) if (st[i] !== goal[i]) U.add(WM.sw[i]);
-                        const opts = [];
-                        L.forEach((e, k) => { for (const w of e.wings) if (!U.has(w)) return; opts.push({ perm: e.perm, kind: 'c', idx: k }); });
-                        M.forEach((m, k) => opts.push({ perm: m.perm, kind: 'm', idx: k }));
-                        const O = opts.length;
-                        for (let a1 = 0; a1 < O; a1++) if (score(st, opts[a1].perm) > cur) return [opts[a1]];
-                        for (let a1 = 0; a1 < O; a1++) {
-                            const s1 = applyPerm(st, opts[a1].perm);
-                            for (let b1 = 0; b1 < O; b1++) if (score(s1, opts[b1].perm) > cur) return [opts[a1], opts[b1]];
-                        }
-                        if (O <= 170) {
-                            for (let a1 = 0; a1 < O; a1++) {
-                                const s1 = applyPerm(st, opts[a1].perm);
-                                for (let b1 = 0; b1 < O; b1++) {
-                                    const s2 = applyPerm(s1, opts[b1].perm);
-                                    for (let c1 = 0; c1 < O; c1++) if (score(s2, opts[c1].perm) > cur) return [opts[a1], opts[b1], opts[c1]];
-                                }
-                            }
-                        }
-                        return null;
-                    }
-                    function solveEven(start) {
-                        const out = []; let st = start;
-                        for (let it = 0; it < 80; it++) {
-                            const cur = cnt(st);
-                            if (cur === n) return out;
-                            let best = 0, bi = -1;
-                            for (let k = 0; k < L.length; k++) {
-                                const e = L[k], mv = e.moved; let d = 0;
-                                for (let q = 0; q < mv.length; q++) { const x = mv[q]; d += (st[e.perm[x]] === goal[x] ? 1 : 0) - (st[x] === goal[x] ? 1 : 0); }
-                                if (d > best) { best = d; bi = k; }
-                            }
-                            if (bi >= 0) { out.push({ kind: 'c', idx: bi }); st = applyPerm(st, L[bi].perm); continue; }
-                            const fx = stallFix(st, cur);
-                            if (!fx) return null;
-                            for (const o of fx) { out.push({ kind: o.kind, idx: o.idx }); st = applyPerm(st, o.perm); }
-                        }
-                        return null;
-                    }
-                    let plan = solveEven(curState);
-                    if (!plan) {
-                        for (let m = 0; m < M.length && !plan; m++) {      // koreksi paritas (makro 4-siklus)
-                            const r = solveEven(applyPerm(curState, M[m].perm));
-                            if (r) plan = [{ kind: 'm', idx: m }, ...r];
-                        }
-                    }
-                    if (!plan) return null;
-                    return plan.map(o => o.kind === 'm'
-                        ? M[o.idx]
-                        : { steps: L[o.idx].word.flatMap(mi => M[mi].steps) });
-                }
-
-                const innerWingMovesByDepth = new Map();
-                for (let k = 1; k < half; k++) {
-                    if (cancelComputeRequested) return [];
-                    const wSet = buildStickerSet(N, [[k, 0], [N - 1 - k, 0]]);
-                    let wState = Uint8Array.from(wSet.orbitList.map(o => grid[o.f * N * N + o.j * N + o.i]));
-                    for (const mv of globalOuterMoves) {
-                        wState = applyPerm(wState, wingRefPerm(mv.axis, mv.sliceStart === 0 ? 0 : 3, mv.dir));
-                    }
-                    let alreadySolved = true;
-                    for (let i = 0; i < wState.length; i++) if (wState[i] !== faceGoal[wingRef.orbitList[i].f]) { alreadySolved = false; break; }
-
-                    if (!alreadySolved) {
-                        const macros = solveWingOrbitState(wState) || [];
-                        const depthMoves = [];
-                        for (const mac of macros) {
-                            for (const stp of mac.steps) {
-                                const actualSlice = stp.isInner ? (stp.side === 0 ? k : (N - 1 - k)) : (stp.side === 0 ? 0 : (N - 1));
-                                const moveObj = {
-                                    axis: stp.axis, sliceStart: actualSlice, sliceEnd: actualSlice, dir: stp.dir,
-                                    isSolvingMove: true,
-                                    phaseName: `Fase 2: Rumus Wing-Edge Pairing (Orbit ${k})`,
-                                    formulaTag: `Wing-Pair [${k}]`
-                                };
-                                formulaMoves.push(moveObj);
-                                depthMoves.push(moveObj);
-                            }
-                        }
-                        innerWingMovesByDepth.set(k, depthMoves);
-                    }
-                    if (k % 5 === 0) {
-                        onProgress(10 + Math.round((k / Math.max(1, half)) * 30), `Fase 2: Wing-Edge Pairing (${k}/${half - 1})`, formulaMoves.length);
-                        await new Promise(r => setTimeout(r, 0));
-                    }
-                }
-
-                // Phase 3: Solve Center Orbits (i, j) via Pure 3-Cycle Niklas Commutators
-                function solveCenter24WithNiklas(startState, lib) {
-                    const goal = Uint8Array.from(lib.ref.orbitList.map(o => faceGoal[o.f])), E = lib.entries, n = 24;
-                    const cnt = st => { let c = 0; for (let x = 0; x < n; x++) if (st[x] === goal[x]) c++; return c; };
-                    const score = (st, pp) => { let c = 0; for (let x = 0; x < n; x++) if (st[pp[x]] === goal[x]) c++; return c; };
-                    const chosen = [];
-                    let state = startState.slice();
-                    for (let step = 0; step < 120; step++) {
-                        const cur = cnt(state);
-                        if (cur === n) return chosen;
-                        let best = 0, bi = -1;
-                        for (let k = 0; k < E.length; k++) {
-                            const e = E[k], mv = e.moved; let d = 0;
-                            for (let q = 0; q < mv.length; q++) { const x = mv[q]; d += (state[e.perm[x]] === goal[x] ? 1 : 0) - (state[x] === goal[x] ? 1 : 0); }
-                            if (d > best) { best = d; bi = k; }
-                        }
-                        if (bi >= 0) { chosen.push(E[bi]); state = applyPerm(state, E[bi].perm); continue; }
-                        // buntu: cari 2-3 siklus yang hanya menyentuh stiker salah
-                        const bad = new Set(); for (let x = 0; x < n; x++) if (state[x] !== goal[x]) bad.add(x);
-                        const opts = E.filter(e => e.moved.every(x => bad.has(x)));
-                        let seq = null;
-                        for (let a1 = 0; a1 < opts.length && !seq; a1++) {
-                            const s1 = applyPerm(state, opts[a1].perm);
-                            for (let b1 = 0; b1 < opts.length; b1++) if (score(s1, opts[b1].perm) > cur) { seq = [opts[a1], opts[b1]]; break; }
-                        }
-                        if (!seq && opts.length <= 200) {
-                            for (let a1 = 0; a1 < opts.length && !seq; a1++) {
-                                const s1 = applyPerm(state, opts[a1].perm);
-                                for (let b1 = 0; b1 < opts.length && !seq; b1++) {
-                                    const s2 = applyPerm(s1, opts[b1].perm);
-                                    for (let c1 = 0; c1 < opts.length; c1++) if (score(s2, opts[c1].perm) > cur) { seq = [opts[a1], opts[b1], opts[c1]]; break; }
-                                }
-                            }
-                        }
-                        if (!seq) return null;
-                        for (const e of seq) { chosen.push(e); state = applyPerm(state, e.perm); }
-                    }
-                    return null;
-                }
-
-                const centerOrbitsToSolve = [];
-                for (let i = 1; i < half; i++) {
-                    for (let j = 1; j < half; j++) centerOrbitsToSolve.push({ i, j, type: (i === j) ? 'diag' : 'obliq' });
-                    if (N % 2 === 1) centerOrbitsToSolve.push({ i, j: half, type: 'cross' });
-                }
-
-                function applyMoveToCenterState(cState, mv, N, i, j, lib, N_ref, refI, refJ) {
-                    const s = mv.sliceStart;
-                    let refSl = -1;
-                    if (s === 0) refSl = 0;
-                    else if (s === N - 1) refSl = N_ref - 1;
-                    else if (s === i) refSl = refI;
-                    else if (s === N - 1 - i) refSl = N_ref - 1 - refI;
-                    else if (s === j) refSl = refJ;
-                    else if (s === N - 1 - j) refSl = N_ref - 1 - refJ;
-                    return refSl < 0 ? cState : applyPerm(cState, lib.ref.getMovePerm(mv.axis, refSl, mv.dir));
-                }
-
-                const totalCenterOrbits = centerOrbitsToSolve.length;
-                for (let cIdx = 0; cIdx < totalCenterOrbits; cIdx++) {
-                    if (cancelComputeRequested) return [];
-                    const { i, j, type } = centerOrbitsToSolve[cIdx];
-                    const lib = (type === 'diag') ? niklasDiag : ((type === 'cross') ? niklasCross : niklasObliq);
-                    const N_ref = (type === 'diag') ? 4 : ((type === 'cross') ? 5 : 6);
-                    const refI = 1, refJ = (type === 'diag') ? 1 : 2;
-                    const coordsOnFace = [[i, j], [N - 1 - j, i], [N - 1 - i, N - 1 - j], [j, N - 1 - i]];
-
-                    let cState = new Uint8Array(24);
-                    for (let f = 0; f < 6; f++) {
-                        for (let c = 0; c < 4; c++) {
-                            const [ci, cj] = coordsOnFace[c];
-                            cState[f * 4 + c] = grid[f * N * N + cj * N + ci];
-                        }
-                    }
-
-                    // Apply Phase 1 outer moves + only the relevant Wing Orbit moves for depths `i` and `j`
-                    for (const mv of globalOuterMoves) cState = applyMoveToCenterState(cState, mv, N, i, j, lib, N_ref, refI, refJ);
-                    for (const kk of [...new Set([i, j])].sort((x, y) => x - y)) {
-                        if (innerWingMovesByDepth.has(kk)) {
-                            for (const mv of innerWingMovesByDepth.get(kk)) cState = applyMoveToCenterState(cState, mv, N, i, j, lib, N_ref, refI, refJ);
-                        }
-                    }
-
-                    let solved = true;
-                    for (let u = 0; u < 24; u++) if (cState[u] !== faceGoal[lib.ref.orbitList[u].f]) { solved = false; break; }
-
-                    if (!solved) {
-                        const niklasSeq = solveCenter24WithNiklas(cState, lib) || [];
-                        const mapSl = r => r === 0 ? 0 : r === N_ref - 1 ? N - 1 : r === refI ? i : r === N_ref - 1 - refI ? N - 1 - i : r === refJ ? j : N - 1 - j;
-                        const phaseName = `Fase 3: Komutator Pusat Niklas (${i},${j})`;
-                        const tag = `Niklas [${i},${j}]`;
-                        for (const ent of niklasSeq) {
-                            for (const stp of ent.steps) {
-                                const sl = mapSl(stp.refSl);
-                                formulaMoves.push({ axis: stp.axis, sliceStart: sl, sliceEnd: sl, dir: stp.dir, isSolvingMove: true, phaseName, formulaTag: tag });
-                            }
-                        }
-                    }
-
-                    if (cIdx % 150 === 0 && totalCenterOrbits > 50) {
-                        onProgress(40 + Math.round(((cIdx + 1) / totalCenterOrbits) * 58), `Fase 3: Komutator Pusat Niklas (${cIdx + 1}/${totalCenterOrbits})`, formulaMoves.length);
-                        await new Promise(r => setTimeout(r, 0));
-                    }
-                }
-
-                onProgress(100, 'Seluruh Rumus Selesai Disusun!', formulaMoves.length);
-                return formulaMoves;
-            }
-
+            // ============================================================================
+            // HUD LOG
+            // ============================================================================
             let recentNotations = [];
             function logMoveFormulaToHUD(mv) {
                 if (!mv) return;
-                recentNotations.push(moveToNotation(mv, cubeSize));
+                recentNotations.push(HC.moveToNotation(mv, cubeSize));
                 if (recentNotations.length > 24) recentNotations.shift();
-                if (mv.phaseName) activePhaseBadge.textContent = mv.phaseName;
-                const prefix = mv.formulaTag ? `<span class="text-amber-300 font-semibold">[${mv.formulaTag}]</span> ` : '';
-                formulaStreamBox.innerHTML = `${prefix}<span class="text-sky-300">${recentNotations.slice(-16).join(' ')}</span>`;
+                const ph = Q.phases[mv.phase] || { name: '', tag: '' };
+                if (ph.name) activePhaseBadge.textContent = ph.name;
+                const tag = Q.kind === 'solve' ? `${ph.tag} ${mv.index + 1}/${formatNumberID(Q.total)}` : ph.tag;
+                formulaStreamBox.innerHTML = `<span class="text-amber-300 font-semibold">[${tag}]</span> <span class="text-sky-300">${recentNotations.slice(-16).join(' ')}</span>`;
             }
 
-            function setCubeSize(newSize) {
-                const clamped = Math.max(2, Math.min(400, parseInt(newSize, 10) || 3));
-                cubeSize = clamped;
-                sizeSlider.value = sizeInput.value = clamped;
-                sizeBadge.textContent = `× ${clamped}`;
-                if (mobSizeIndicator) mobSizeIndicator.textContent = `${clamped}×${clamped}`;
-
-                const suggestedScramble = clamped <= 5 ? 25 : (clamped <= 30 ? 40 : (clamped <= 100 ? 60 : 100));
-                scrambleCountInput.value = suggestedScramble;
-                scrambleCountSlider.value = Math.min(500, suggestedScramble);
-
+            // ============================================================================
+            // UKURAN
+            // ============================================================================
+            let prewarmTimer = null;
+            function schedulePrewarm() {   // bangun tabel solver saat idle (tidak memblokir saat load); hanya yang dibutuhkan ukuran aktif
+                if (prewarmTimer) clearTimeout(prewarmTimer);
+                prewarmTimer = setTimeout(async () => { try { await HC.ensureLibs(cubeSize, () => new Promise(r => setTimeout(r, 30))); } catch (e) { console.warn('prewarm', e); } }, 500);
+            }
+            const clampSize = v => { const n = parseInt(v, 10); return Math.max(2, Math.min(MAX_N_GPU, Number.isFinite(n) ? n : cubeSize)); };
+            function paintSizeLabels(n) {
+                sizeSlider.value = sizeInput.value = n;
+                sizeBadge.textContent = `× ${n}`;
+                if (mobSizeIndicator) mobSizeIndicator.textContent = `${n}×${n}`;
                 presetBtns.forEach(btn => {
                     const bSize = parseInt(btn.getAttribute('data-size'), 10);
-                    btn.className = bSize === clamped
+                    btn.className = bSize === n
                         ? 'preset-btn py-1.5 rounded-lg text-xs mono font-semibold bg-sky-500/25 text-sky-300 border border-sky-400/60 transition'
                         : 'preset-btn py-1.5 rounded-lg text-xs mono font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/70 transition';
                 });
-
-                moveQueue = []; scrambleCounter = 0; recentNotations = []; activeMove = null; isPaused = false;
-                btnPause.textContent = '⏸ Jeda';
+            }
+            function setCubeSize(newSize) {
+                invalidateOps();                                  // batalkan solver/timer yang memakai state lama
+                const clamped = clampSize(newSize);
+                const sizeChanged = clamped !== cubeSize || !currentFbo;
+                cubeSize = clamped;
+                paintSizeLabels(clamped);
+                const suggestedScramble = clamped <= 5 ? 25 : (clamped <= 30 ? 40 : (clamped <= 100 ? 60 : 100));
+                scrambleCountInput.value = suggestedScramble;
+                scrambleCountSlider.value = Math.min(500, suggestedScramble);
+                qClear(); scrambleCounter = 0; recentNotations = []; activeMove = null; isPaused = false; solveRetries = 0;
                 hideSolvedCelebration();
-                createPingPongFBOs(clamped);
-                setTimeout(() => K3.prep(), 200);
+                if (sizeChanged) createPingPongFBOs(clamped); else resetCubeFBO(clamped);
+                schedulePrewarm();
                 formulaStreamBox.textContent = `Rubik ${clamped}×${clamped} siap. Klik "Acak Rubik" lalu "Selesaikan (Rumus)".`;
                 updateStatusUI('SOLVED');
             }
 
+            // ============================================================================
+            // ACAK
+            // ============================================================================
+            const scrambleCountValue = () => Math.max(1, Math.min(2000, parseInt(scrambleCountInput.value, 10) || 25));
             function startAnimatedScramble() {
-                if (isComputingFormula) return;
-                if (autoLoopTimer) { clearTimeout(autoLoopTimer); autoLoopTimer = null; }
-                hideSolvedCelebration();
-                isPaused = false;
-                btnPause.textContent = '⏸ Jeda';
-                if (activeMove) { commitMoveOnGPU(activeMove); if (!activeMove.isSolvingMove) scrambleCounter++; activeMove = null; }
-                moveQueue = [];
-
-                const scrambleCount = Math.max(1, parseInt(scrambleCountInput.value, 10) || 25);
-                let lastAxis = -1;
-                for (let i = 0; i < scrambleCount; i++) {
-                    const mv = generateRandomMove(cubeSize, lastAxis);
-                    lastAxis = mv.axis;
-                    moveQueue.push({ ...mv, isSolvingMove: false, phaseName: 'Mengacak Rubik', formulaTag: 'Acak' });
-                }
+                if (currentMode === 'COMPUTING' || contextLost) return;
+                invalidateOps(); hideSolvedCelebration();
+                isPaused = false; commitActiveMove(); solveRetries = 0;
+                qStartScramble();
+                const n = scrambleCountValue(); let lastAxis = -1;
+                for (let i = 0; i < n; i++) { const mv = HC.generateMove(cubeSize, lastAxis); lastAxis = mv.axis; qPushScramble(mv, 0); }
                 updateStatusUI('SCRAMBLING');
             }
-
             function executeInstantScramble() {
-                if (isComputingFormula) return;
-                if (autoLoopTimer) { clearTimeout(autoLoopTimer); autoLoopTimer = null; }
-                hideSolvedCelebration();
-                isPaused = false;
-                btnPause.textContent = '⏸ Jeda';
-                if (activeMove) { commitMoveOnGPU(activeMove); activeMove = null; }
-                moveQueue = [];
-
-                const scrambleCount = Math.max(1, parseInt(scrambleCountInput.value, 10) || 25);
-                let lastAxis = -1;
-                const scramNotations = [];
-                for (let i = 0; i < scrambleCount; i++) {
-                    const mv = generateRandomMove(cubeSize, lastAxis);
-                    lastAxis = mv.axis;
-                    commitMoveOnGPU(mv);
-                    scrambleCounter++;
-                    if (scramNotations.length < 16) scramNotations.push(moveToNotation(mv, cubeSize));
+                if (currentMode === 'COMPUTING' || currentMode === 'SOLVING' || contextLost) return;
+                invalidateOps(); hideSolvedCelebration();
+                isPaused = false; commitActiveMove(); qClear(); solveRetries = 0;
+                const n = scrambleCountValue(); let lastAxis = -1; const notes = [];
+                for (let i = 0; i < n; i++) {
+                    const mv = HC.generateMove(cubeSize, lastAxis); lastAxis = mv.axis;
+                    commitMoveOnGPU(mv); scrambleCounter++;
+                    if (notes.length < 16) notes.push(HC.moveToNotation(mv, cubeSize));
                 }
-                formulaStreamBox.innerHTML = `<span class="text-amber-300 font-semibold">[Teracak ${scrambleCount} Langkah]</span> ${scramNotations.join(' ')}${scrambleCount > 16 ? ' ...' : ''}`;
+                formulaStreamBox.innerHTML = `<span class="text-amber-300 font-semibold">[Teracak ${n} Langkah]</span> ${notes.join(' ')}${n > 16 ? ' ...' : ''}`;
                 updateSliceGeometryUniforms(cubeSize, 0, 0, cubeSize - 1, 0.0);
                 updateStatusUI('SCRAMBLED');
             }
 
+            // ============================================================================
+            // SOLVE
+            // ============================================================================
             let solveRetries = 0;
-            // Penutup solve: verifikasi piksel GPU dulu; kalau belum rapi, hitung ulang (maks 3x). Jangan pernah klaim "berhasil" palsu.
+            function showSolveFailure(res, extra) {
+                const where = res.phaseName ? `Fase ${res.phase} — ${res.phaseName}` : `Fase ${res.phase}`;
+                const diag = `ukuran ${res.N}×${res.N}, ${formatNumberID(res.movesGenerated || 0)} gerakan sempat dibuat (dibuang), alasan: ${res.error}`;
+                console.error('[HYPERCUBE] solver gagal:', where, diag);
+                formulaStreamBox.innerHTML = `<span class="text-rose-300 font-semibold">[Solver gagal]</span> <span class="text-rose-200">${where}</span><br><span class="text-sky-300">${diag}${extra ? ' ' + extra : ''}</span>`;
+                if (autoLoopToggle.checked) { autoLoopToggle.checked = false; }
+                updateStatusUI('ERROR');
+            }
+
+            // Penutup solve: validasi dari piksel GPU yang sudah dikomit. Tidak pernah menyatakan sukses tanpa bukti.
             function finalizeSolve() {
                 updateSliceGeometryUniforms(cubeSize, 0, 0, cubeSize - 1, 0.0);
-                if (!isCubeSolvedOnGPU(cubeSize)) {
-                    if (solveRetries < 3) { solveRetries++; startAnimatedSolve(true); return; }
-                    formulaStreamBox.innerHTML = '<span class="text-rose-300 font-semibold">[Solver gagal]</span> <span class="text-sky-300">Kubus belum rapi setelah 3 percobaan ulang.</span>';
-                    updateStatusUI('SCRAMBLED');
+                const chk = readGrid(cubeSize);
+                if (chk.unknown === 0 && HC.gridSolved(cubeSize, chk.grid)) {
+                    solveRetries = 0;
+                    updateStatusUI('SOLVED');
+                    showSolvedCelebration();
+                    if (autoLoopToggle.checked) scheduleAuto(startAnimatedScramble, 1600, 'SOLVED');
                     return;
                 }
-                solveRetries = 0;
-                updateStatusUI('SOLVED');
-                showSolvedCelebration();
-                if (autoLoopToggle.checked) {
-                    autoLoopTimer = setTimeout(() => { if (autoLoopToggle.checked && currentMode === 'SOLVED') startAnimatedScramble(); }, 1600);
+                if (solveRetries < 2) {
+                    solveRetries++;
+                    formulaStreamBox.innerHTML = `<span class="text-amber-300 font-semibold">[Verifikasi GPU gagal]</span> <span class="text-sky-300">State aktual belum rapi; menghitung ulang dari piksel GPU (percobaan ${solveRetries}/2).</span>`;
+                    startAnimatedSolve(true);
+                    return;
                 }
+                showSolveFailure({ N: cubeSize, phase: 10, phaseName: 'Verifikasi GPU akhir', movesGenerated: 0, error: chk.unknown ? `${chk.unknown} piksel tidak dikenali` : 'kubus belum rapi setelah 3 percobaan (1 awal + 2 hitung ulang)' });
             }
 
             async function startAnimatedSolve(isRetry) {
-                if (isComputingFormula) return;
+                if (currentMode === 'COMPUTING' || currentMode === 'SOLVING' && isRetry !== true || contextLost) return;
+                if (currentMode === 'SOLVED' && isRetry !== true) return;
                 if (isRetry !== true) solveRetries = 0;
-                if (autoLoopTimer) { clearTimeout(autoLoopTimer); autoLoopTimer = null; }
-                hideSolvedCelebration();
-                isPaused = false;
-                btnPause.textContent = '⏸ Jeda';
-                moveQueue = []; recentNotations = [];
-                if (activeMove) { commitMoveOnGPU(activeMove); activeMove = null; }
-                lastSolveInfo = ''; scrambleCounter = 0;
-
-                if (cubeSize === 2) {
-                    const sol = S2.solve(readGPUState(2, S2.st));
-                    if (sol && sol.length > 0) {
-                        lastSolveInfo = ` (Rumus BFS Optimal 2×2: ${sol.length} langkah)`;
-                        for (let idx = 0; idx < sol.length; idx++) {
-                            const m = sol[idx], fc = (m / 3) | 0, k = m % 3;
-                            const base = { axis: fc, sliceStart: 1, sliceEnd: 1, isSolvingMove: true, phaseName: 'Rumus BFS Optimal 2×2', formulaTag: `BFS (${idx + 1}/${sol.length})` };
-                            moveQueue.push({ ...base, dir: k === 1 ? -1 : 1 });
-                            if (k === 2) moveQueue.push({ ...base, dir: 1 });
-                        }
-                        updateStatusUI('SOLVING');
-                        return;
-                    }
-                    finalizeSolve();
+                invalidateOps(); hideSolvedCelebration();
+                const myToken = opToken;
+                isPaused = false; commitActiveMove(); qClear(); recentNotations = []; lastSolveInfo = ''; scrambleCounter = 0;
+                const N = cubeSize;
+                const read = readGrid(N);
+                if (read.unknown > 0) {
+                    showSolveFailure({ N, phase: 0, phaseName: 'Pembacaan state', movesGenerated: 0, error: `${read.unknown} piksel GPU tidak cocok dengan palet warna (pembacaan tidak valid)` });
                     return;
                 }
-
-                if (cubeSize === 3) {
-                    K3.prep();
-                    const sol = K3.solve(readGPUState(3, K3.st), false);
-                    if (sol && sol.length > 0) {
-                        for (let idx = 0; idx < sol.length; idx++) {
-                            const m = sol[idx], fc = (m / 3) | 0, k = m % 3, axis = fc >> 1, sl = (fc & 1) ? 0 : 2;
-                            const phaseName = idx < Math.ceil(sol.length * 0.55) ? 'Kociemba Fase 1 (G0 → G1)' : 'Kociemba Fase 2 (G1 → Solved)';
-                            const base = { axis, sliceStart: sl, sliceEnd: sl, isSolvingMove: true, phaseName, formulaTag: `Kociemba (${idx + 1}/${sol.length})` };
-                            moveQueue.push({ ...base, dir: k === 1 ? -1 : 1 });
-                            if (k === 2) moveQueue.push({ ...base, dir: 1 });
-                        }
-                        lastSolveInfo = ` (Rumus 2-Fase Kociemba: ${moveQueue.length} langkah)`;
-                        updateStatusUI('SOLVING');
-                        return;
-                    }
-                    finalizeSolve();
-                    return;
-                }
-
                 isComputingFormula = true;
-                cancelComputeRequested = false;
-                solverComputeModal.classList.remove('opacity-0', 'pointer-events-none');
-                computeTitle.textContent = `Memindai FBO GPU Rubik ${cubeSize}×${cubeSize}...`;
-                computeSubtitle.textContent = `Menyusun Rumus Orbit Sudut, Wing-Edge & Komutator Niklas`;
-                computeProgressBar.style.width = '5%';
+                updateStatusUI('COMPUTING');
+                computeTitle.textContent = `Memindai FBO GPU Rubik ${N}×${N}...`;
+                computeSubtitle.textContent = N === 2 ? 'BFS dua arah (CPU)' : (N === 3 ? 'Kociemba dua fase (CPU)' : 'Orbit Sudut, Wing-Edge & Komutator Niklas (CPU)');
+                computeProgressBar.style.width = '3%'; computePhaseText.textContent = 'Memulai...'; computeStepCount.textContent = '0 langkah rumus';
+                if (modalTimer) clearTimeout(modalTimer);
+                modalTimer = setTimeout(() => { if (myToken === opToken) showComputeModal(); }, N >= 4 ? 0 : 300);
                 await new Promise(r => setTimeout(r, 25));
-
-                const generatedQueue = await solveCubeFromGPUPixels(cubeSize, (pct, phaseStr, stepCnt) => {
-                    computeProgressBar.style.width = `${pct}%`;
-                    computePhaseText.textContent = phaseStr;
-                    computeStepCount.textContent = `${formatNumberID(stepCnt)} langkah rumus`;
-                });
-
-                solverComputeModal.classList.add('opacity-0', 'pointer-events-none');
-                isComputingFormula = false;
-                if (cancelComputeRequested) { updateStatusUI('SCRAMBLED'); return; }
-
-                moveQueue = generatedQueue;
-                lastSolveInfo = ` (Rumus Murni Piksel GPU ${cubeSize}×${cubeSize}: ${formatNumberID(moveQueue.length)} langkah)`;
-                if (moveQueue.length > 0) updateStatusUI('SOLVING');
-                else { finalizeSolve(); }
+                if (myToken !== opToken) return;
+                let res;
+                try {
+                    res = await HC.solveGrid(N, read.grid, {
+                        cancelled: () => myToken !== opToken,
+                        yield: () => new Promise(r => setTimeout(r, 0)),
+                        progress: (pct, txt, steps) => { if (myToken !== opToken) return; computeProgressBar.style.width = `${pct}%`; computePhaseText.textContent = txt; computeStepCount.textContent = `${formatNumberID(steps)} langkah rumus`; }
+                    });
+                } catch (err) { res = { ok: false, N, phase: -2, phaseName: 'Internal', error: String(err && err.message || err), movesGenerated: 0 }; }
+                if (myToken !== opToken) return;                       // dibatalkan / digantikan: JANGAN sentuh state
+                isComputingFormula = false; hideComputeModal();
+                if (res.cancelled) { updateStatusUI('CANCELLED'); return; }
+                if (!res.ok) { showSolveFailure(res); return; }
+                if (read.version !== stateVersion) {                   // state GPU berubah selama perhitungan => antrean basi
+                    showSolveFailure({ N, phase: 11, phaseName: 'Sinkronisasi state', movesGenerated: res.moves.n, error: 'state GPU berubah saat solver berjalan; antrean dibuang' });
+                    return;
+                }
+                if (res.moves.n === 0) { finalizeSolve(); return; }
+                qSet(res.moves, res.phases, 'solve');
+                const st = res.stats || {};
+                lastSolveInfo = ` (${res.method}: ${formatNumberID(res.moves.n)} langkah, ${st.ms != null ? st.ms + ' ms hitung, ' : ''}antrean ${res.verified === true ? 'terverifikasi di salinan state' : 'belum diverifikasi sebelum animasi'})`;
+                if (res.stats && res.stats.kociembaP1 != null) lastSolveInfo = ` (Kociemba: fase 1 = ${st.kociembaP1} + fase 2 = ${st.kociembaP2} gerakan, ${st.ms} ms hitung, antrean terverifikasi di salinan state)`;
+                updateStatusUI('SOLVING');
             }
 
-            sizeSlider.addEventListener('input', e => setCubeSize(e.target.value));
-            sizeInput.addEventListener('change', e => setCubeSize(e.target.value));
-            presetBtns.forEach(btn => btn.addEventListener('click', () => setCubeSize(btn.getAttribute('data-size'))));
+            // ============================================================================
+            // EVENT KONTROL
+            // ============================================================================
+            let sizeDebounce = null;
+            sizeSlider.addEventListener('input', e => {            // geser slider: hanya perbarui label; alokasi FBO ditunda (debounce) agar tidak terjadi ratusan realokasi
+                const v = clampSize(e.target.value);
+                sizeInput.value = v; sizeBadge.textContent = `× ${v}`;
+                if (sizeDebounce) clearTimeout(sizeDebounce);
+                sizeDebounce = setTimeout(() => { sizeDebounce = null; if (v !== cubeSize) setCubeSize(v); }, 280);
+            });
+            sizeSlider.addEventListener('change', e => { if (sizeDebounce) { clearTimeout(sizeDebounce); sizeDebounce = null; } const v = clampSize(e.target.value); if (v !== cubeSize) setCubeSize(v); });
+            sizeInput.addEventListener('change', e => { if (sizeDebounce) { clearTimeout(sizeDebounce); sizeDebounce = null; } setCubeSize(clampSize(e.target.value)); });
+            presetBtns.forEach(btn => btn.addEventListener('click', () => { if (sizeDebounce) { clearTimeout(sizeDebounce); sizeDebounce = null; } setCubeSize(btn.getAttribute('data-size')); }));
             btnScramble.addEventListener('click', startAnimatedScramble);
             btnInstantScramble.addEventListener('click', executeInstantScramble);
-            btnSolve.addEventListener('click', startAnimatedSolve);
+            btnSolve.addEventListener('click', () => startAnimatedSolve());
             mobBtnScramble.addEventListener('click', () => { toggleMobileDrawer(false); startAnimatedScramble(); });
             mobBtnInstant.addEventListener('click', () => { toggleMobileDrawer(false); executeInstantScramble(); });
             mobBtnSolve.addEventListener('click', () => { toggleMobileDrawer(false); startAnimatedSolve(); });
 
             btnTwistStep.addEventListener('click', () => {
-                if (isComputingFormula) return;
-                hideSolvedCelebration(); isPaused = false; btnPause.textContent = '⏸ Jeda';
-                moveQueue.push({ ...generateRandomMove(cubeSize), isSolvingMove: false, phaseName: 'Langkah Acak +1', formulaTag: '+1 Twist' });
+                if (currentMode === 'COMPUTING' || currentMode === 'SOLVING' || contextLost) return;   // tidak boleh menyisipkan gerakan ke antrean solusi
+                hideSolvedCelebration(); isPaused = false;
+                if (Q.kind !== 'scramble' || qRemaining() === 0 && !activeMove) { commitActiveMove(); qStartScramble(); }
+                qPushScramble(HC.generateMove(cubeSize, -1), 1);
                 updateStatusUI('SCRAMBLING');
             });
 
             btnPause.addEventListener('click', () => {
-                if (!activeMove && moveQueue.length === 0) return;
+                if (currentMode !== 'SCRAMBLING' && currentMode !== 'SOLVING') return;
+                if (!activeMove && qRemaining() === 0) return;
                 isPaused = !isPaused;
-                btnPause.textContent = isPaused ? '▶ Lanjut' : '⏸ Jeda';
                 updateStatusUI(currentMode);
             });
 
-            btnReset.addEventListener('click', () => {
-                if (isComputingFormula) { cancelComputeRequested = true; return; }
-                if (autoLoopTimer) { clearTimeout(autoLoopTimer); autoLoopTimer = null; }
-                setCubeSize(cubeSize);
-            });
+            btnReset.addEventListener('click', () => { setCubeSize(cubeSize); });   // setCubeSize membatalkan solver yang berjalan lalu mereset kubus
 
             btnToggleFbo.addEventListener('click', () => {
                 showFboPreview = !showFboPreview;
@@ -1886,7 +1925,23 @@
                 fboPreviewCard.classList.toggle('pointer-events-none', !showFboPreview);
                 btnToggleFbo.textContent = showFboPreview ? 'Aktif' : 'Nonaktif';
             });
+            autoLoopToggle.addEventListener('change', () => {
+                if (!autoLoopToggle.checked) { clearAutoLoop(); return; }
+                if (currentMode === 'SOLVED') scheduleAuto(startAnimatedScramble, 800, 'SOLVED');
+                else if (currentMode === 'SCRAMBLED') scheduleAuto(() => startAnimatedSolve(), 800, 'SCRAMBLED');
+            });
 
+            // WebGL: kehilangan / pemulihan konteks
+            renderer.domElement.addEventListener('webglcontextlost', e => {
+                e.preventDefault(); contextLost = true; invalidateOps(); isComputingFormula = false;
+                showFatal('Konteks WebGL hilang (GPU/driver me-reset). Menunggu pemulihan; state kubus akan direset.');
+            });
+            renderer.domElement.addEventListener('webglcontextrestored', () => {
+                contextLost = false; hideFatal(); fboA = fboB = currentFbo = nextFbo = null; setCubeSize(cubeSize);
+            });
+
+            paintSizeLabels(3);
+            sizeSlider.max = sizeInput.max = String(MAX_N_GPU);
             setCubeSize(3);
             setSpeedTPS(3.0);
             computeResponsiveCameraFraming();
@@ -1903,6 +1958,7 @@
 
             function animate(now) {
                 requestAnimationFrame(animate);
+                if (contextLost) return;
                 const dt = Math.min((now - lastTime) * 0.001, 0.1), frameMs = now - lastTime;
                 lastTime = now;
 
@@ -1915,16 +1971,15 @@
 
                 updateCamera(dt);
 
-                if (!isPaused && !isComputingFormula) {
+                if (!isPaused && currentMode !== 'COMPUTING') {
                     let turnsBudget = turnsPerSecond * dt;
                     const maxPasses = Math.max(2, Math.floor((window.innerWidth < 1024 ? 3e7 : 1.2e8) / (8 * cubeSize * cubeSize)));
                     let passes = 0;
 
-                    while (turnsBudget > 0 && (activeMove || moveQueue.length > 0)) {
+                    while (turnsBudget > 0 && (activeMove || qRemaining() > 0)) {
                         if (!activeMove) {
-                            activeMove = moveQueue.shift();
+                            activeMove = qNext();
                             if (!activeMove) break;
-                            activeMove.progress = 0.0;
                             logMoveFormulaToHUD(activeMove);
                         }
                         const remainingTurn = 1.0 - activeMove.progress;
@@ -1947,12 +2002,11 @@
                         updateCountersUI();
                     } else {
                         updateSliceGeometryUniforms(cubeSize, 0, 0, cubeSize - 1, 0.0);
-                        if (moveQueue.length === 0) {
+                        updateCountersUI();
+                        if (qRemaining() === 0) {
                             if (currentMode === 'SCRAMBLING') {
                                 updateStatusUI('SCRAMBLED');
-                                if (autoLoopToggle.checked) {
-                                    autoLoopTimer = setTimeout(() => { if (autoLoopToggle.checked && currentMode === 'SCRAMBLED') startAnimatedSolve(); }, 1000);
-                                }
+                                if (autoLoopToggle.checked) scheduleAuto(() => startAnimatedSolve(), 1000, 'SCRAMBLED');
                             } else if (currentMode === 'SOLVING') {
                                 finalizeSolve();
                             }
@@ -1979,8 +2033,18 @@
                 }
             }
 
+            // Hook uji (hanya aktif dengan ?debug di URL): tidak dipakai aplikasi normal.
+            if (/[?&]debug\b/.test(location.search)) {
+                window.__hc = { HC, readGrid, commitMoveOnGPU, setCubeSize, startAnimatedScramble, executeInstantScramble, startAnimatedSolve, finalizeSolve,
+                    get mode() { return currentMode; }, get cubeSize() { return cubeSize; }, get opToken() { return opToken; }, get stateVersion() { return stateVersion; },
+                    get computing() { return isComputingFormula; }, get paused() { return isPaused; }, get queue() { return { remaining: qRemaining(), total: Q.total, kind: Q.kind }; },
+                    get active() { return !!activeMove; }, get autoTimer() { return !!autoLoopTimer; }, get contextLost() { return contextLost; },
+                    gl: renderer.getContext(), renderer, allocCount: () => allocCounter, isSolvedOnGPU: () => isCubeSolvedOnGPU(cubeSize), setSpeedTPS, MAX_N_GPU };
+            }
+
             requestAnimationFrame(animate);
         };
+
     </script>
 </body>
 </html>
